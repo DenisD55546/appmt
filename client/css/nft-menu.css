@@ -1,0 +1,171 @@
+/* NFT Menu Styles - Без затемнения */
+.nft-menu-button {
+    position: absolute;
+    top: 15px;
+    right: 15px;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: var(--text-primary);
+    font-size: 24px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    z-index: 10;
+}
+
+.nft-menu-button:hover {
+    background: rgba(255, 255, 255, 0.15);
+    transform: scale(1.05);
+}
+
+.nft-menu {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 10000;
+    pointer-events: none; /* Важно: не блокируем клики */
+}
+
+.nft-menu.active {
+    display: block;
+}
+
+/* Убрали backdrop полностью */
+
+.nft-menu-content {
+    position: absolute;
+    background: var(--surface);
+    border-radius: 18px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    min-width: 160px;
+    padding: 8px;
+    opacity: 0;
+    transform: scale(0.95);
+    transform-origin: top right;
+    transition: all 0.2s ease;
+    z-index: 10001;
+    pointer-events: auto; 
+}
+
+.nft-menu.active .nft-menu-content {
+    opacity: 1;
+    transform: scale(1);
+}
+
+.nft-menu-item {
+    width: 100%;
+    padding: 5px;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    color: var(--text-primary);
+    font-size: 0.9em;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: left;
+}
+
+.nft-menu-item:hover {
+    background: var(--surface-dark);
+}
+
+/* NFT Menu in Modal Styles */
+.nft-menu-button {
+    position: absolute;
+    top: 15px;
+    right: 15px;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: var(--text-primary);
+    font-size: 20px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.nft-menu-button:hover {
+    background: rgba(255, 255, 255, 0.15);
+    transform: scale(1.05);
+}
+
+.nft-menu {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 10000;
+    pointer-events: none;
+}
+
+.nft-menu.active {
+    display: block;
+}
+
+.nft-menu-content {
+    position: absolute;
+    background: var(--surface);
+    border-radius: 12px;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    min-width: 140px;
+    padding: 6px;
+    opacity: 0;
+    transform: scale(0.95);
+    transform-origin: top right;
+    transition: all 0.2s ease;
+    z-index: 10001;
+    pointer-events: auto;
+}
+
+.nft-menu.active .nft-menu-content {
+    opacity: 1;
+    transform: scale(1);
+}
+
+.nft-menu-item {
+    width: 100%;
+    padding: 10px 12px;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    color: var(--text-primary);
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: left;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.nft-menu-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.nft-menu-item .icon {
+    font-size: 16px;
+}
+
+/* Стили для кнопки закрепления */
+.pin-menu-item {
+    color: #4CAF50;
+}
+
+.pin-menu-item:hover {
+    background: rgba(76, 175, 80, 0.1);
+}
