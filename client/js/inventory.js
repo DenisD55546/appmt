@@ -1,6 +1,8 @@
 
 let cachedCollectionStats = {};
 let cachedCollections = null;
+let currentFilterSection = 'profile'; // 'profile', 'market', 'home'
+window.currentFilterSection = currentFilterSection;
 
 if (typeof window.cachedUserNFTs === 'undefined') {
     window.cachedUserNFTs = [];
@@ -11,7 +13,7 @@ let currentFilters = {
     model: [],          // Массив выбранных моделей
     symbol: [],         // Массив выбранных символов
     background: [],     // Массив выбранных фонов
-    filter: null        // Оставляем один тип сортировки
+    filter: null       // Оставляем один тип сортировки
 }; 
 window.currentFilters = currentFilters;
 
@@ -22,17 +24,6 @@ function getRarityBySupply(totalSupply) {
     if (totalSupply <= 200) return 'Эпический';
     if (totalSupply <= 1000) return 'Редкий';
     return 'Обычный';
-}
-
-function getCollectionEmoji(collectionName) {
-    if (!collectionName) return '🎴';
-    
-    const name = collectionName.toLowerCase();
-    if (name.includes('cap')) return '🧢';
-    if (name.includes('car')) return '🚗';
-    if (name.includes('pencil')) return '✏️';
-    if (name.includes('pepe')) return '🐸';
-    return '🎴';
 }
 
 function escapeHtml(text) {
@@ -49,6 +40,9 @@ let previousFilters = null;
 let filtersSnapshot = null;
 
 async function openFilterModal(filterType) {
+    const activeSection = document.querySelector('.section.active')?.id || 'profile';
+    window.currentFilterSection = activeSection;
+
     const modal = document.getElementById('filterModal');
     const modalTitle = document.getElementById('filterModalTitle');
     const modalBody = document.getElementById('filterModalBody');
@@ -124,19 +118,12 @@ function closeFilterModal() {
     
     // Обновляем UI и загружаем данные
     if (activeSection === 'profile') {
-        updateActiveFilters();
-        loadInventoryItems();
+        // Используем новую функцию applyProfileFilters
+        applyProfileFilters();
     } else if (activeSection === 'market') {
+        // Маркет использует свою логику
         if (window.applyMarketFilters) {
             window.applyMarketFilters();
-        } else {
-            updateMarketActiveFilters();
-            loadMarketItems();
-        }
-    } else if (activeSection === 'home') {
-        // Для главной используем applyHomeFilters
-        if (window.applyHomeFilters) {
-            window.applyHomeFilters();
         }
     }
     
@@ -171,45 +158,61 @@ function cancelFilters() {
 
 // Получение контента для фильтра
 async function getFilterContent(filterType) {
+    // Проверяем текущую секцию
+    const section = window.currentFilterSection || 
+                    document.querySelector('.section.active')?.id || 
+                    'profile';
+    
+    // Если это не профиль - делегируем соответствующему модулю
+    if (section === 'market') {
+        if (filterType === 'collection') {
+            return await window.getMarketCollectionsContent();
+        } else if (filterType === 'rarity') {
+            return window.getMarketRarityContent();
+        } else if (filterType === 'sort') {
+            return window.getMarketSortContent();
+        } else if (filterType === 'price') {
+            return window.getMarketPriceContent();
+        }
+    } else if (section === 'home') {
+        if (filterType === 'category') {
+            return await window.getHomeCategoryContent();
+        } else if (filterType === 'rarity') {
+            return window.getHomeRarityContent();
+        } else if (filterType === 'sort') {
+            return window.getHomeSortContent();
+        }
+    }
+
     if (filterType === 'collection') {
         try {
-            // Загружаем коллекции с сервера
             const collections = await fetchCollections();
             
             if (!collections || collections.length === 0) {
-                return '<p style="color: var(--text-secondary); text-align: center; padding: 20px;">Коллекций не найдено</p>';
+                return `
+                    <div class="filter-empty-state">
+                        <p>Коллекций не найдено</p>
+                    </div>
+                `;
             }
             
-            let html = '';
+            let html = '<div class="filter-container">';
             
-            // Добавляем реальные коллекции из таблицы m_nft_collections
+            // Добавляем коллекции
             html += collections.map(collection => {
                 const collectionId = collection.id;
                 const collectionName = collection.name || 'Без названия';
-                
-                // ИСПРАВЛЕНИЕ: Получаем путь к изображению из базы данных
                 const imagePath = collection.image_file_id ? 
-                    `/m_nft_image/base/${collection.image_file_id}` : 
-                    null;
-                
+                    `/m_nft_image/base/${collection.image_file_id}` : null;
                 const userNFTCount = collection.userNFTCount || 0;
                 const totalSupply = collection.total_supply || 0;
-
-                let rarity = 'Обычный';
-                if (collection.rarity) {
-                    rarity = collection.rarity;
-                } else if (totalSupply) {
-                    rarity = getRarityBySupply(totalSupply);
-                }
-
+                const rarity = collection.rarity || getRarityBySupply(totalSupply);
                 const safeCollectionName = escapeHtml(collectionName);
                 const rarityColor = getRarityColor(rarity);
                 const isSelected = currentFilters.collection.includes(`col${collectionId}`);
 
-                // Генерируем HTML с изображением
                 let imageHtml = '';
                 if (imagePath) {
-                    // Используем реальное изображение из базы
                     imageHtml = `
                         <div class="filter-item-image">
                             <img src="${imagePath}" 
@@ -219,7 +222,6 @@ async function getFilterContent(filterType) {
                         </div>
                     `;
                 } else {
-                    // Fallback если нет изображения
                     imageHtml = `<span style="font-size: 1.2em; margin-right: 8px;">🎴</span>`;
                 }
 
@@ -243,6 +245,7 @@ async function getFilterContent(filterType) {
                 `;
             }).join('');
             
+            html += '</div>';
             return html;
         } catch (error) {
             console.error('Error loading collections:', error);
@@ -250,46 +253,73 @@ async function getFilterContent(filterType) {
         }
     }
     
-    // Для остальных фильтров (модель, символ, фон) оставим демо-данные
-    else if (filterType === 'model' || filterType === 'symbol' || filterType === 'background') {
-        // Для этих типов показываем сообщение, что нет данных
-        return `
-            <div style="text-align: center; padding: 40px 20px; color: var(--text-secondary);">
-                <div style="font-size: 2em; margin-bottom: 10px;">📊</div>
-                <p>Фильтр "${getFilterTitle(filterType)}" в разработке</p>
-                <p style="font-size: 0.9em; margin-top: 10px; color: var(--text-tertiary);">
-                    Будет доступен в следующих обновлениях
-                </p>
-            </div>
-        `;
+    else if (filterType === 'filter') {
+        // Используем ТАКОЙ ЖЕ ДИЗАЙН как в маркере - с фильтр-карточками и чекбоксами
+        const filterOptions = [
+            { id: 'newest', name: 'Сначала новые', description: 'Сначала недавно добавленные' },
+            { id: 'oldest', name: 'Сначала старые', description: 'Сначала давно добавленные' },
+            { id: 'price_low', name: 'Цена по возрастанию', description: 'От дешевых к дорогим' },
+            { id: 'price_high', name: 'Цена по убыванию', description: 'От дорогих к дешевым' },
+            { id: 'rarity_high', name: 'Сначала редкие', description: 'От легендарных к обычным' },
+            { id: 'rarity_low', name: 'Сначала обычные', description: 'От обычных к редким' },
+            { id: 'collection', name: 'По коллекциям', description: 'Группировать по коллекции' }
+        ];
+
+        let html = '<div class="filter-container">';
+
+        html += filterOptions.map(option => {
+            const isSelected = currentFilters.filter === option.id;
+            const filterId = option.id;
+
+            return `
+                <div class="filter-item" onclick="selectProfileFilterButton('${filterId}', '${option.name}')">
+                    <div class="filter-item-content">
+                        <span class="filter-item-name">
+                            ${option.name}
+                        </span>
+                    </div>
+                    <div class="filter-item-checkbox">
+                        <input type="checkbox" 
+                               id="filter_${filterId}" 
+                               ${isSelected ? 'checked' : ''}
+                               onchange="toggleProfileFilter('${filterId}', this.checked)">
+                        <label for="filter_${filterId}"></label>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        html += '</div>';
+        return html;
     }
     
-    // Для типа 'filter' используем кнопки для фильтрации по редкости, новизне и т.д.
-    else if (filterType === 'filter') {
-        const filterButtons = [
-            { id: 'rarity-high', name: 'По редкости ↓', icon: '', description: 'От самых редких' },
-            { id: 'rarity-low', name: 'По редкости ↑', icon: '', description: 'От самых обычных' },
-            { id: 'newest', name: 'Последние', icon: '', description: 'Сначала новые' },
-            { id: 'oldest', name: 'Старые', icon: '', description: 'Сначала старые' },
-            { id: 'number-low', name: 'По номеру ↓', icon: '', description: 'От меньшего номера' },
-            { id: 'number-high', name: 'По номеру ↑', icon: '', description: 'От большего номера' },
-            { id: 'collection', name: 'По коллекции', icon: '', description: 'Группировать по коллекции' }
-        ];
-        
-        return `
-            <div class="filter-buttons-grid">
-                ${filterButtons.map(button => `
-                    <button class="filter-button-option ${currentFilters.filter === button.id ? 'active' : ''}" 
-                            onclick="selectFilterButton('${button.id}', '${button.name}')"
-                            title="${button.description}">
-                        <span class="filter-button-icon">${button.icon}</span>
-                        <span class="filter-button-text">${button.name}</span>
-                    </button>
-                `).join('')}
-            </div>
-        `;
-    } else {
+    else {
         return '<p style="color: var(--text-secondary); text-align: center; padding: 20px;">Фильтр не найден</p>';
+    }
+}
+
+function toggleProfileFilter(filterId, isChecked) {
+    if (isChecked) {
+        // Сначала снимаем все остальные чекбоксы
+        document.querySelectorAll('input[id^="filter_"]').forEach(cb => {
+            if (cb.id !== `filter_${filterId}`) {
+                cb.checked = false;
+            }
+        });
+        
+        // Устанавливаем новый фильтр
+        currentFilters.filter = filterId;
+    } else {
+        // Снимаем фильтр
+        currentFilters.filter = null;
+    }
+    
+    // Обновляем отображение
+    updateActiveFilters();
+    
+    // Вибрация
+    if (window.vibrate) {
+        window.vibrate([3, 5, 3]);
     }
 }
 
@@ -525,23 +555,26 @@ function selectMarketFilterButton(filterId, filterName) {
 
 // Выбор кнопки фильтра для профиля
 function selectProfileFilterButton(filterId, filterName) {
-    // Сначала снимаем выделение со всех кнопок фильтра
-    document.querySelectorAll('.filter-button-option').forEach(button => {
-        button.classList.remove('active');
-    });
+    const checkbox = document.getElementById(`filter_${filterId}`);
+    if (!checkbox) return;
     
-    if (currentFilters.filter === filterId) {
-        // Снимаем выбор
+    if (checkbox.checked) {
+        // Если уже выбран - снимаем
+        checkbox.checked = false;
         currentFilters.filter = null;
     } else {
-        // Выбираем новый фильтр
+        // Снимаем все остальные чекбоксы
+        document.querySelectorAll('input[id^="filter_"]').forEach(cb => {
+            cb.checked = false;
+        });
+        
+        // Выбираем новый
+        checkbox.checked = true;
         currentFilters.filter = filterId;
-        // Добавляем класс active к выбранной кнопке
-        const activeButton = document.querySelector(`.filter-button-option[onclick*="${filterId}"]`);
-        if (activeButton) {
-            activeButton.classList.add('active');
-        }
     }
+    
+    // Обновляем отображение
+    updateActiveFilters();
     
     // Вибрация
     if (window.vibrate) {
@@ -602,12 +635,12 @@ function updateFilterCardText(filterType, count, isActive) {
         // Для типа фильтра показываем название выбранного фильтра
         if (currentFilters.filter) {
             const filterNames = {
-                'rarity-high': 'Редкость ↓',
-                'rarity-low': 'Редкость ↑',
                 'newest': 'Новые',
                 'oldest': 'Старые',
-                'number-low': 'Номер ↓',
-                'number-high': 'Номер ↑',
+                'rarity-high': 'Редкость ↓',
+                'rarity-low': 'Редкость ↑',
+                'number-low': 'Номер ↑',
+                'number-high': 'Номер ↓',
                 'collection': 'Коллекция'
             };
             filterValueElement.textContent = filterNames[currentFilters.filter] || 'Выбрано';
@@ -698,8 +731,9 @@ function clearFilterType(filterType) {
             
         case 'filter':
             currentFilters.filter = null;
-            document.querySelectorAll('.filter-button-option').forEach(button => {
-                button.classList.remove('active');
+            // Снимаем все чекбоксы фильтров
+            document.querySelectorAll('input[id^="filter_"]').forEach(cb => {
+                cb.checked = false;
             });
             break;
             
@@ -737,34 +771,16 @@ async function loadUserNFTsFromServer(userId) {
                 window.socket.emit('get_user_nfts', userId);
                 window.socket.once('user_nfts', (data) => {
                     if (data.success) {
-                        // ДЕТАЛЬНЫЙ ДЕБАГ
-                        console.log('📦 Полные данные от сервера:', data);
-                        
                         // Проверяем структуру данных
                         if (data.nfts && data.nfts.length > 0) {
                             console.log('🔍 Анализ первого NFT:');
                             const firstNFT = data.nfts[0];
                             console.log('Все поля:', Object.keys(firstNFT));
                             console.log('Значение forSale:', firstNFT.forSale);
-                            console.log('Тип forSale:', typeof firstNFT.forSale);
-                            console.log('salePrice:', firstNFT.salePrice);
                             
                             // Проверяем сколько NFT на продаже
                             const forSaleCount = data.nfts.filter(nft => nft.forSale).length;
                             console.log(`💰 NFT на продаже: ${forSaleCount} из ${data.nfts.length}`);
-                            
-                            // Выводим все NFT с их статусом
-                            data.nfts.forEach((nft, i) => {
-                                if (nft.forSale) {
-                                    console.log(`🏷️ NFT на продаже #${i}:`, {
-                                        id: nft.id,
-                                        number: nft.number,
-                                        forSale: nft.forSale,
-                                        salePrice: nft.salePrice,
-                                        collectionName: nft.collectionName
-                                    });
-                                }
-                            });
                         }
                         
                         // ОБНОВЛЯЕМ ГЛОБАЛЬНЫЙ КЭШ
@@ -779,19 +795,7 @@ async function loadUserNFTsFromServer(userId) {
                 });
             });
         } else {
-            // Fallback: HTTP запрос
-            const response = await fetch(`/api/user/${userId}/nfts`);
-            const data = await response.json();
-            
-            // Аналогичный дебаг для HTTP
-            console.log('🌐 Данные через HTTP:', data);
-            
-            if (data.nfts && data.nfts.length > 0) {
-                console.log('HTTP - первый NFT:', data.nfts[0]);
-            }
-            
-            window.cachedUserNFTs = data.success ? data.nfts : [];
-            return window.cachedUserNFTs;
+            console.error('Error loading NFTs:', data.error);
         }
     } catch (error) {
         console.error('Error loading NFTs:', error);
@@ -802,7 +806,7 @@ async function loadUserNFTsFromServer(userId) {
 // Загрузка предметов инвентаря
 
 async function loadInventoryItems() {
-    console.log('🔄 Начало загрузки инвентаря...');
+    console.log('🔄 Начало загрузки инвентаря с серверной фильтрацией...');
     if (window.nftLoadInProgress) return;
     window.nftLoadInProgress = true;
     
@@ -813,21 +817,9 @@ async function loadInventoryItems() {
         return;
     }
     
-    // Показываем загрузку
-    inventoryGrid.innerHTML = `
-        <div class="empty-inventory">
-            <div class="empty-icon">⏳</div>
-            <p>Загрузка NFT...</p>
-            <p class="empty-hint" style="font-size: 0.8em; margin-top: 10px;" id="loadingStatus">Получение данных</p>
-        </div>
-    `;
-    
     // Получаем ID пользователя из Telegram
     const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
     const userId = tgUser?.id;
-    
-    console.log('👤 Telegram User:', tgUser);
-    console.log('🆔 User ID:', userId);
     
     if (!userId) {
         inventoryGrid.innerHTML = `
@@ -841,73 +833,53 @@ async function loadInventoryItems() {
         return;
     }
     
-    const loadingStatus = document.getElementById('loadingStatus');
-    
     try {
-        let userNFTs;
+        let userNFTs = [];
         
-        // Загружаем NFT с сервера
+        // ПОДГОТАВЛИВАЕМ ДАННЫЕ ДЛЯ СЕРВЕРНОЙ ФИЛЬТРАЦИИ
+        const filterData = {
+            collection: currentFilters.collection.length > 0 ? currentFilters.collection : undefined,
+            sort: currentFilters.filter || undefined
+        };
+        
+        console.log('🔄 Запрос NFT с фильтрами:', filterData);
+        
         if (window.socket && window.socket.connected) {
-            userNFTs = await new Promise((resolve) => {
-                window.socket.emit('get_user_nfts', userId);
-                window.socket.once('user_nfts', (data) => {
-                    console.log('📦 Данные NFT с сервера:', data);
+            userNFTs = await new Promise((resolve, reject) => {
+                const timeoutId = setTimeout(() => {
+                    console.log('⚠️ Таймаут загрузки инвентаря');
+                    resolve([]);
+                }, 10000);
+                
+                const handleResponse = (data) => {
+                    clearTimeout(timeoutId);
+                    window.socket.off('user_nfts_with_filters', handleResponse);
                     
                     if (data.success && data.nfts) {
-                        // Ключевое исправление: убедимся, что forSale обрабатывается правильно
-                        const processedNFTs = data.nfts.map(nft => {
-                            // Обрабатываем forSale - может быть boolean, number, или строкой
-                            let forSale = false;
-                            let salePrice = 0;
-                            
-                            if (nft.forSale !== undefined && nft.forSale !== null) {
-                                // Если forSale - булево
-                                if (typeof nft.forSale === 'boolean') {
-                                    forSale = nft.forSale;
-                                }
-                                // Если forSale - число (1/0)
-                                else if (typeof nft.forSale === 'number') {
-                                    forSale = nft.forSale === 1 || nft.forSale === true;
-                                }
-                                // Если forSale - строка
-                                else if (typeof nft.forSale === 'string') {
-                                    forSale = nft.forSale === 'true' || nft.forSale === '1';
-                                }
-                            }
-                            
-                            // Получаем цену продажи
-                            if (forSale && nft.salePrice) {
-                                salePrice = nft.salePrice;
-                            }
-                            
-                            return {
-                                ...nft,
-                                forSale: forSale,
-                                salePrice: salePrice
-                            };
-                        });
+                        console.log(`✅ Загружено ${data.nfts.length} NFT с серверными фильтрами`);
                         
-                        console.log('✅ Обработанные NFT с статусом продажи:', 
-                            processedNFTs.filter(nft => nft.forSale).length, 
-                            'на продаже из', 
-                            processedNFTs.length
-                        );
-                        
-                        // Сохраняем в кэш
-                        window.cachedUserNFTs = processedNFTs;
-                        resolve(processedNFTs);
+                        // Кэшируем NFT
+                        window.cachedUserNFTs = data.nfts;
+                        resolve(data.nfts);
                     } else {
-                        console.error('❌ Ошибка загрузки NFT:', data.error);
+                        console.error('❌ Ошибка загрузки инвентаря:', data.error);
                         resolve([]);
                     }
+                };
+                
+                window.socket.once('user_nfts_with_filters', handleResponse);
+                window.socket.emit('get_user_nfts_with_filters', { 
+                    userId, 
+                    filters: filterData 
                 });
             });
         } else {
-            // Fallback если нет socket
-            userNFTs = [];
+            // Fallback на старую логику, если нет соединения
+            console.log('⚠️ Socket не подключен, используем кэшированные данные');
+            userNFTs = window.cachedUserNFTs || [];
         }
         
-        console.log(`📊 Получено ${userNFTs.length} NFT от сервера`);
+        console.log(`📊 Получено ${userNFTs.length} NFT от сервера с фильтрами`);
         
         if (userNFTs.length === 0) {
             inventoryGrid.innerHTML = `
@@ -921,112 +893,39 @@ async function loadInventoryItems() {
             return;
         }
         
-        // Показываем сколько NFT загружено
-        if (loadingStatus) {
-            loadingStatus.textContent = `Загружено ${userNFTs.length} NFT, фильтрация...`;
-        }
-        
-        // Фильтрация предметов
-        let filteredItems = userNFTs;
-
-        // Применяем фильтр коллекций (если выбрано несколько)
-        if (currentFilters.collection && currentFilters.collection.length > 0) {
-            const collectionIds = currentFilters.collection.map(id => 
-                parseInt(id.replace('col', ''))
-            );
-            filteredItems = filteredItems.filter(item => 
-                collectionIds.includes(item.collectionId)
-            );
-            console.log(`🔍 После фильтра коллекций (${collectionIds.length} выбрано): ${filteredItems.length} NFT`);
-        }
-
-        // Применяем фильтр по редкости/новизне
-        if (currentFilters.filter) {
-            switch(currentFilters.filter) {
-                case 'rarity-high':
-                    // Сортируем по уровню редкости (от самой высокой)
-                    filteredItems.sort((a, b) => {
-                        const rarityOrder = { 'Легендарный': 4, 'Эпический': 3, 'Редкий': 2, 'Обычный': 1 };
-                        return (rarityOrder[b.rarity] || 0) - (rarityOrder[a.rarity] || 0);
-                    });
-                    break;
-                case 'rarity-low':
-                    // Сортируем по уровню редкости (от самой низкой)
-                    filteredItems.sort((a, b) => {
-                        const rarityOrder = { 'Легендарный': 4, 'Эпический': 3, 'Редкий': 2, 'Обычный': 1 };
-                        return (rarityOrder[a.rarity] || 0) - (rarityOrder[b.rarity] || 0);
-                    });
-                    break;
-                case 'newest':
-                    // Сначала новые (по дате создания)
-                    filteredItems.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-                    break;
-                case 'oldest':
-                    // Сначала старые
-                    filteredItems.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-                    break;
-                case 'number-low':
-                    // По номеру (возрастание)
-                    filteredItems.sort((a, b) => (a.number || 0) - (b.number || 0));
-                    break;
-                case 'number-high':
-                    // По номеру (убывание)
-                    filteredItems.sort((a, b) => (b.number || 0) - (a.number || 0));
-                    break;
-                case 'collection':
-                    // Группировка по коллекции
-                    filteredItems.sort((a, b) => {
-                        if (a.collectionName < b.collectionName) return -1;
-                        if (a.collectionName > b.collectionName) return 1;
-                        return (a.number || 0) - (b.number || 0);
-                    });
-                    break;
-            }
-        }
-        
-        // Если после фильтрации ничего не осталось
-        if (filteredItems.length === 0) {
-            inventoryGrid.innerHTML = `
-                <div class="empty-inventory">
-                    <div class="empty-icon">🔍</div>
-                    <p>Ничего не найдено</p>
-                    <p class="empty-hint">Попробуйте изменить фильтры</p>
-                </div>
-            `;
-            window.nftLoadInProgress = false;
-            return;
-        }
-        
-        // Обновляем статус
-        if (loadingStatus) {
-            loadingStatus.textContent = `Отображаем ${filteredItems.length} NFT...`;
-        }
-
-        inventoryGrid.innerHTML = filteredItems.map((nft, index) => {
+        inventoryGrid.innerHTML = userNFTs.map((nft, index) => {
             const rarityClass = nft.rarity ? nft.rarity.toLowerCase() : 'обычный';
             const rarityColor = getRarityColor(nft.rarity);
             const isOnSale = nft.forSale === true || nft.forSale === 1 || nft.forSale === 'true' || nft.forSale === '1';
             const isUpgraded = nft.update === 1;
-                
+            const isPinned = nft.pinned && nft.pinned > 0; // Проверяем закрепление
+
             // Получаем стиль фона для всей карточки
             const cardBackgroundStyle = getNFTCardBackground(nft);
-                
+
             // Получаем паттерн если есть
             const patternHtml = (isUpgraded && nft.patternData && nft.patternData.file_name) 
-                ? getNFTCardFullPatternProfile(`/m_nft_image/patterns/${nft.patternData.file_name}.svg`)
+                ? getNFTCardFullPatternProfile(`/m_nft_image/patterns/${nft.patternData.file_name}.svg`,
+                    nft.backgroundData?.back_0)
                 : '';
-                
+
             return `
                 <div class="inventory-item in" onclick="viewNFT(${nft.id})" 
                      style="${cardBackgroundStyle} animation-delay: ${index * 0.05}s; position: relative;">
 
                     ${patternHtml}
+
                     <div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
                         background: linear-gradient(to top, rgba(13, 13, 16, 0.6) 0%, 
                         rgba(13, 13, 16, 0.15) 30%, 
                         rgba(13, 13, 16, 0.1) 70%, transparent 100%);
                         border-radius: 18px; z-index: 1;"></div>
+
+                    <!-- Значок продажи (правая сторона) -->
                     ${isOnSale ? '<div class="on-sale-badge">💰</div>' : ''}
+
+                    <!-- Значок закрепления (левая сторона) -->
+                    ${isPinned ? '<div class="pinned-badge" title="Закреплен">📌</div>' : ''}
 
                     <div class="inventory-item-image" style="position: relative; z-index: 2;">
                         ${generateNFTImageHTML(nft)}
@@ -1041,13 +940,7 @@ async function loadInventoryItems() {
             `;
         }).join('');
         
-        console.log('✅ Инвентарь успешно загружен');
-        console.log('📊 Статистика продаж:', 
-            filteredItems.filter(nft => nft.forSale).length, 
-            'на продаже из', 
-            filteredItems.length
-        );
-        
+        console.log('✅ Инвентарь успешно загружен с серверной фильтрацией');
         window.nftLoadInProgress = false;
         
     } catch (error) {
@@ -1060,6 +953,87 @@ async function loadInventoryItems() {
             </div>
         `;
         window.nftLoadInProgress = false;
+    }
+}
+
+// Функция для отмены фильтров профиля (аналогично маркету)
+function cancelProfileFilters() {
+    // Восстанавливаем фильтры из снимка
+    if (filtersSnapshot) {
+        currentFilters.collection = [...filtersSnapshot.collection];
+        currentFilters.model = [...filtersSnapshot.model];
+        currentFilters.symbol = [...filtersSnapshot.symbol];
+        currentFilters.background = [...filtersSnapshot.background];
+        currentFilters.filter = filtersSnapshot.filter;
+    }
+    
+    // Закрываем модалку
+    const modal = document.getElementById('filterModal');
+    if (modal) {
+        modal.classList.remove('active');
+    }
+    
+    // Вибрация
+    if (window.vibrate) {
+        window.vibrate(1);
+    }
+}
+
+// Функция применения фильтров профиля
+function applyProfileFilters() {
+    // Обновляем UI
+    updateActiveFilters();
+    
+    // Загружаем NFT с примененными фильтрами
+    loadInventoryItems();
+    
+    // Закрываем модалку
+    const modal = document.getElementById('filterModal');
+    if (modal) {
+        modal.classList.remove('active');
+    }
+    
+    // Сбрасываем снимок
+    filtersSnapshot = null;
+    
+    // Вибрация
+    if (window.vibrate) {
+        window.vibrate([3, 5, 3]);
+    }
+}
+
+// Обновляем функцию clearFilters для профиля
+function clearProfileFilters() {
+    const modalTitle = document.getElementById('filterModalTitle');
+    const title = modalTitle?.textContent;
+    
+    let filterType = null;
+    if (title === 'Выбор коллекции') filterType = 'collection';
+    else if (title === 'Фильтры') filterType = 'filter';
+    
+    if (!filterType) return;
+    
+    // Очищаем соответствующий фильтр
+    if (filterType === 'collection') {
+        currentFilters.collection = [];
+    } 
+    else if (filterType === 'filter') {
+        currentFilters.filter = null;
+    }
+    
+    // Закрываем модалку и сразу применяем сброшенные фильтры
+    const modal = document.getElementById('filterModal');
+    if (modal) {
+        modal.classList.remove('active');
+    }
+    
+    // Обновляем UI и применяем фильтры
+    updateActiveFilters();
+    loadInventoryItems();
+    
+    // Вибрация
+    if (window.vibrate) {
+        window.vibrate([5, 3, 5]);
     }
 }
 
@@ -1112,8 +1086,10 @@ function getNFTCardBackground(nft) {
     }
 }
 
-function getNFTCardFullPatternProfile(svgPath) {
+function getNFTCardFullPatternProfile(svgPath, bgColor) {
     if (!svgPath) return '';
+    
+    const filterStyle = window.getPatternFilterStyle(bgColor);
     
     const innerCircleRadius = 18;    // В процентах от размера карточки
     const middleCircleRadius = 28;   
@@ -1142,7 +1118,8 @@ function getNFTCardFullPatternProfile(svgPath) {
                         background-image: url('${svgPath}');
                         background-size: contain;
                         background-repeat: no-repeat;
-                        background-position: center;">
+                        background-position: center;
+                        ${filterStyle}">
             </div>
         `;
     }
@@ -1175,7 +1152,8 @@ function getNFTCardFullPatternProfile(svgPath) {
                         background-image: url('${svgPath}');
                         background-size: contain;
                         background-repeat: no-repeat;
-                        background-position: center;">
+                        background-position: center;
+                        ${filterStyle}">
             </div>
         `;
     }
@@ -1200,7 +1178,8 @@ function getNFTCardFullPatternProfile(svgPath) {
                         background-image: url('${svgPath}');
                         background-size: contain;
                         background-repeat: no-repeat;
-                        background-position: center;">
+                        background-position: center;
+                        ${filterStyle}">
             </div>
         `;
     }
@@ -1225,7 +1204,8 @@ function getNFTCardFullPatternProfile(svgPath) {
                         background-image: url('${svgPath}');
                         background-size: contain;
                         background-repeat: no-repeat;
-                        background-position: center;">
+                        background-position: center;
+                        ${filterStyle}">
             </div>
         `;
     }
@@ -1261,7 +1241,8 @@ function getNFTCardPattern(svgPath) {
                         background-image: url('${svgPath}');
                         background-size: contain;
                         background-repeat: no-repeat;
-                        background-position: center;">
+                        background-position: center;
+                        ${filterStyle}">
             </div>
         `;
     }
@@ -1283,7 +1264,8 @@ function getNFTCardPattern(svgPath) {
                         background-image: url('${svgPath}');
                         background-size: contain;
                         background-repeat: no-repeat;
-                        background-position: center;">
+                        background-position: center;
+                        ${filterStyle}">
             </div>
         `;
     }

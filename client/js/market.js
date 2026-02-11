@@ -210,7 +210,8 @@ function displayMarketNFTs(nfts) {
         
         // Получаем паттерн если есть
         const patternHtml = (isUpgraded && nft.patternData && nft.patternData.file_name) 
-            ? getNFTCardFullPattern(`/m_nft_image/patterns/${nft.patternData.file_name}.svg`)
+            ? getNFTCardFullPattern(`/m_nft_image/patterns/${nft.patternData.file_name}.svg`, 
+                            nft.backgroundData?.back_0)
             : '';
 
         return `
@@ -288,8 +289,37 @@ function getNFTCardBackground(nft) {
     }
 }
 
-function getNFTCardFullPattern(svgPath) {
+function getBrightness(hexColor) {
+    // Убираем # если есть
+    hexColor = hexColor.replace('#', '');
+    
+    // Преобразуем hex в RGB
+    const r = parseInt(hexColor.substr(0, 2), 16);
+    const g = parseInt(hexColor.substr(2, 2), 16);
+    const b = parseInt(hexColor.substr(4, 2), 16);
+    
+    // Формула яркости (0-255)
+    return (r * 299 + g * 587 + b * 114) / 1000;
+}
+
+function getPatternFilterStyle(bgColor) {
+    if (!bgColor) return '';
+    
+    const brightness = getBrightness(bgColor);
+    
+    // Если фон темный (яркость < 128) - делаем иконки светлыми
+    // Если фон светлый (яркость >= 128) - делаем иконки темными
+    if (brightness < 96) {
+        return 'filter: invert(1) brightness(0.8);';
+    } else {
+        return 'filter: invert(0) brightness(0.8);';
+    }
+}
+
+function getNFTCardFullPattern(svgPath, bgColor) {
     if (!svgPath) return '';
+    
+    const filterStyle = getPatternFilterStyle(bgColor);
     
     const innerCircleRadius = 18;
     const middleCircleRadius = 32;
@@ -319,7 +349,8 @@ function getNFTCardFullPattern(svgPath) {
                         background-image: url('${svgPath}');
                         background-size: contain;
                         background-repeat: no-repeat;
-                        background-position: center;">
+                        background-position: center;
+                        ${filterStyle}">
             </div>
         `;
     }
@@ -352,7 +383,8 @@ function getNFTCardFullPattern(svgPath) {
                         background-image: url('${svgPath}');
                         background-size: contain;
                         background-repeat: no-repeat;
-                        background-position: center;">
+                        background-position: center;
+                        ${filterStyle}">
             </div>
         `;
     }
@@ -377,7 +409,8 @@ function getNFTCardFullPattern(svgPath) {
                         background-image: url('${svgPath}');
                         background-size: contain;
                         background-repeat: no-repeat;
-                        background-position: center;">
+                        background-position: center;
+                        ${filterStyle}">
             </div>
         `;
     }
@@ -402,7 +435,8 @@ function getNFTCardFullPattern(svgPath) {
                         background-image: url('${svgPath}');
                         background-size: contain;
                         background-repeat: no-repeat;
-                        background-position: center;">
+                        background-position: center;
+                        ${filterStyle}">
             </div>
         `;
     }
@@ -496,16 +530,11 @@ function openMarketFilterModal(filterType) {
         priceMax: marketFilters.priceMax
     };
     
-    // Используем общую функцию открытия модалки
-    window.openFilterModal(filterType);
+    // Устанавливаем секцию ДО открытия модалки
+    window.currentFilterSection = 'market';
     
-    // Загружаем специфичный контент для маркета
-    setTimeout(() => {
-        const modalBody = document.getElementById('filterModalBody');
-        if (modalBody) {
-            loadMarketSpecificFilterContent(filterType, modalBody);
-        }
-    }, 10);
+    // Открываем модалку через общую функцию
+    window.openFilterModal(filterType);
 }
 
 // Загрузка специфичного контента для маркета
@@ -660,13 +689,13 @@ function getMarketRarityContent() {
 // Контент сортировки для маркета (оставляем одиночный выбор)
 function getMarketSortContent() {
     const sorts = [
-        { id: 'newest', name: 'Сначала новые', emoji: '', description: 'Сначала недавно добавленные' },
-        { id: 'oldest', name: 'Сначала старые', emoji: '', description: 'Сначала давно добавленные' },
-        { id: 'price_low', name: 'Цена по возрастанию', emoji: '', description: 'От дешевых к дорогим' },
-        { id: 'price_high', name: 'Цена по убыванию', emoji: '', description: 'От дорогих к дешевым' },
-        { id: 'rarity_high', name: 'Сначала редкие', emoji: '', description: 'От легендарных к обычным' },
-        { id: 'rarity_low', name: 'Сначала обычные', emoji: '', description: 'От обычных к редким' },
-        { id: 'collection', name: 'По коллекциям', emoji: '', description: 'Группировать по коллекции' }
+        { id: 'newest', name: 'Сначала новые', description: 'Сначала недавно добавленные' },
+        { id: 'oldest', name: 'Сначала старые', description: 'Сначала давно добавленные' },
+        { id: 'price_low', name: 'Цена по возрастанию', description: 'От дешевых к дорогим' },
+        { id: 'price_high', name: 'Цена по убыванию', description: 'От дорогих к дешевым' },
+        { id: 'rarity_high', name: 'Сначала редкие', description: 'От легендарных к обычным' },
+        { id: 'rarity_low', name: 'Сначала обычные', description: 'От обычных к редким' },
+        { id: 'collection', name: 'По коллекциям', description: 'Группировать по коллекции' }
     ];
     
     return `
@@ -676,7 +705,6 @@ function getMarketSortContent() {
                 <div class="filter-item" onclick="selectMarketFilterItem('sort', '${sort.id}', '${sort.name}')">
                     <div class="filter-item-content">
                         <span class="filter-item-name">
-                            <span style="font-size: 1.2em; margin-right: 8px;">${sort.emoji}</span>
                             ${sort.name}
                         </span>
                     </div>
@@ -791,14 +819,12 @@ function updateMarketFilterDisplay(filterType, filterName) {
     if (!element) return;
     
     if (filterType === 'collection' || filterType === 'rarity') {
-        // Для множественных фильтров
+        // Для множественных фильтров ВСЕГДА показываем количество
         const count = marketFilters[filterType].length;
         if (count === 0) {
             element.textContent = 'Все';
-        } else if (count === 1) {
-            // Показываем название единственной выбранной
-            element.textContent = filterName;
         } else {
+            // ИСПРАВЛЕНИЕ: Всегда показываем количество, даже если выбран 1 элемент
             element.textContent = `${count} выбрано`;
         }
     } 
@@ -975,3 +1001,8 @@ window.cancelMarketFilters = cancelMarketFilters;
 window.applyMarketFilters = applyMarketFilters;
 window.clearMarketFilters = clearMarketFilters;
 window.getMarketSortContent = getMarketSortContent;
+window.getPatternFilterStyle = getPatternFilterStyle;
+window.getBrightness = getBrightness;
+window.getMarketCollectionsContent = getMarketCollectionsContent;
+window.getMarketRarityContent = getMarketRarityContent;
+window.getMarketPriceContent = getMarketPriceContent;

@@ -102,52 +102,6 @@ app.get('/health', (req, res) => {
   });
 });
 
-app.get('/api/user/:userId/nfts', async (req, res) => {
-    try {
-        const userId = req.params.userId;
-        
-        // ОБНОВЛЕННЫЙ запрос с total_supply
-        const nfts = await db.all(`
-            SELECT 
-                mn.id,
-                mn.number,
-                mn.collection_id,
-                mn.created_at,
-                mnc.name as collection_name,
-                mnc.image_file_id as collection_image,
-                mnc.total_supply as total_supply,
-                mnc.sold_count as sold_count
-            FROM m_nfts mn
-            LEFT JOIN m_nft_collections mnc ON mn.collection_id = mnc.id
-            WHERE mn.owner_id = ?
-            ORDER BY mn.created_at DESC
-        `, [userId]);
-        
-        // Используем NFTService для обработки
-        const nftService = new NFTService(db);
-        const processedNFTs = nfts.map(nft => ({
-            id: nft.id,
-            number: nft.number,
-            collectionId: nft.collection_id,
-            collectionName: nft.collection_name,
-            totalSupply: nft.total_supply,
-            soldCount: nft.sold_count,
-            fullName: `${nft.collection_name} #${nft.number}`,
-            image: nftService.getNFTImage(nft.collection_image, nft.number, nft.collection_name),
-            name: `${nftService.getCollectionEmoji(nft.collection_name)} ${nft.collection_name} #${nft.number}`,
-            rarity: nftService.getRarity(nft.total_supply),
-            createdAt: nft.created_at,
-            collectionType: nftService.getCollectionType(nft.collection_name),
-            rarityPercentage: Math.round((nft.number / nft.total_supply) * 100) / 100
-        }));
-        
-        res.json({ success: true, nfts: processedNFTs });
-    } catch (error) {
-        console.error('Error fetching NFTs:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
 app.get('/api/collections', async (req, res) => {
     try {
         const collections = await db.all(`

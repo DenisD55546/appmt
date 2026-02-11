@@ -199,7 +199,7 @@ function displayProfileTransactionHistory(transactions) {
         return `
             <div class="history-item ${transaction.isTransfer ? 'transfer-item' : ''}">
                 <div class="history-item-header">
-                    <div class="history-icon" style="font-size: 1.7em; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;">
+                    <div class="history-icon" style="font-size: 1.7em; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; margin: 5px 0 0 5px;">
                         ${displayContent}
                     </div>
                     
@@ -275,7 +275,7 @@ function getUpgradedNFTPatternForHistory(svgPath) {
     const middleCircleRadius = 46;   // Средний круг (второй ряд)
     const innerCircleRadius3 = 58;    // Внутренний круг
     
-    let patternHtml = '<div class="card-pattern" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; border-radius: 8px; overflow: hidden;">';
+    let patternHtml = '<div class="card-pattern" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; border-radius: 10px; overflow: hidden;">';
     
     // 1. Внутренний круг - 6 иконок (первый ряд)
     const innerIconsCount = 6;

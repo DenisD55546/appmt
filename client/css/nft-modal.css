@@ -65,8 +65,12 @@
 .nft-actions {
     display: flex;
     gap: 10px;
+    padding: 0 20px;
+    margin: 10px 0;
+    position: relative;
     justify-content: center;
-    margin-bottom: 20px;
+    align-items: center;
+    flex-wrap: wrap;
 }
 
 .nft-action-btn {
@@ -89,6 +93,18 @@
 
 .action-icon {
     font-size: 1.3em;
+}
+
+.nft-actions {
+    position: relative;
+}
+
+.nft-dropdown-menu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 10px;
+    z-index: 1000;
 }
 
 /* Информация - таблица 2 равных столбца с тонкими столбцами */

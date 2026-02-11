@@ -12,12 +12,10 @@ export class SocketModule {
         this.db = db;
         this.redis = redisClient;
         
-        // Инициализируем сервисы
         this.currencyService = new CurrencyService(redisClient);
         this.nftService = new NFTService(db);
         this.userService = new UserService(db);
         
-        // ВАЖНО: Загружаем токен напрямую если не загрузился из .env
         const botToken = process.env.TELEGRAM_BOT_TOKEN;
         console.log(`🤖 TelegramService токен: ${botToken.substring(0, 10)}...`);
         
@@ -40,9 +38,7 @@ export class SocketModule {
                     console.log('🔵 [SERVER] Received register_user event:', data);
 
                     const { userId } = data;
-                    console.log('👤 User ID:', userId);
 
-                    // ПРЕОБРАЗУЕМ referrerId В ЧИСЛО
                     let referrerId = null;
                     if (data.referrerId) {
                         const numId = Number(data.referrerId);
@@ -50,26 +46,14 @@ export class SocketModule {
                             referrerId = numId;
                         }
                     }
-                    
-                    console.log('🎯 Using referrerId:', referrerId);
-
-                    // ВСЕГДА создаем/обновляем пользователя
                     const userCreated = await this.userService.createUser(userId, referrerId);
                     
-                    // Получаем обновленные данные пользователя
                     const userData = await this.userService.getUserStats(userId);
 
                     socket.emit('user_registered', { 
                         success: true, 
                         user: userData,
                         isNewUser: userCreated
-                    });
-
-                    console.log('🟢 User registration complete:', {
-                        userId: userId,
-                        referrerId: referrerId,
-                        isNewUser: userCreated,
-                        userData: userData
                     });
 
                 } catch (error) {
@@ -134,15 +118,13 @@ export class SocketModule {
             
             socket.on('get_referrals', async (userId) => {
                 try {
-                    // ЗАМЕНЯЕМ вызов старого метода на новый
                     const referrals = await this.userService.getReferralsWithEarnings(userId);
                     
                     socket.emit('referrals_list', { 
                         success: true, 
                         referrals: referrals
                     });
-                    
-                    console.log(`📊 Sent referrals with earnings for user ${userId}:`, referrals);
+
                 } catch (error) {
                     console.error('Error getting referrals:', error);
                     socket.emit('referrals_list', { 
@@ -156,7 +138,7 @@ export class SocketModule {
                 try {
                     const { nftId, fromUserId, toUserId } = data;
                     
-                    // ПРОВЕРЯЕМ БАЛАНС ПОЛЬЗОВАТЕЛЯ (5 ЗВЕЗД)
+                    // ПРОВЕРЯЕМ БАЛАНС (5 ЗВЕЗД)
                     const userBalance = await this.db.get(
                         'SELECT stars_balance FROM users WHERE id = ?',
                         [fromUserId]
@@ -170,7 +152,6 @@ export class SocketModule {
                         return;
                     }
                     
-                    // Проверяем, что пользователь владеет NFT
                     const nftCheck = await this.db.get(
                         'SELECT * FROM m_nfts WHERE id = ? AND owner_id = ?',
                         [nftId, fromUserId]
@@ -184,7 +165,6 @@ export class SocketModule {
                         return;
                     }
                     
-                    // Проверяем, что получатель существует
                     const receiverCheck = await this.db.get(
                         'SELECT id FROM users WHERE id = ?',
                         [toUserId]
@@ -198,55 +178,45 @@ export class SocketModule {
                         return;
                     }
                     
-                    // НАЧИНАЕМ ТРАНЗАКЦИЮ
                     await this.db.run('BEGIN TRANSACTION');
                     
                     try {
-                        // СПИСЫВАЕМ 5 ЗВЕЗД С ОТПРАВИТЕЛЯ
                         await this.db.run(
                             'UPDATE users SET stars_balance = stars_balance - 5 WHERE id = ?',
                             [fromUserId]
                         );
                         
-                        // Обновляем владельца NFT
                         await this.db.run(
-                            'UPDATE m_nfts SET owner_id = ? WHERE id = ?',
+                            'UPDATE m_nfts SET owner_id = ?, pinned = NULL WHERE id = ?',
                             [toUserId, nftId]
                         );
                         
                         await this.nftService.logNFTTransfer(
-                            nftId,          // ID NFT
-                            fromUserId,     // Отправитель
-                            toUserId,       // Получатель
-                            'transfer',     // Тип операции
-                            5               // Стоимость в звездах
+                            nftId,     
+                            fromUserId,
+                            toUserId,  
+                            'transfer',
+                            5          
                         );
                         
-                        // КОММИТИМ ТРАНЗАКЦИЮ
                         await this.db.run('COMMIT');
                         
-                        console.log(`✅ NFT #${nftId} transferred from ${fromUserId} to ${toUserId}, 5 stars deducted`);
-                        
-                        // Получаем новый баланс для отправки клиенту
                         const newBalance = await this.db.get(
                             'SELECT stars_balance FROM users WHERE id = ?',
                             [fromUserId]
                         );
                         
-                        // Отправляем результат клиенту
                         socket.emit('nft_transfer_result', {
                             success: true,
                             message: 'NFT успешно передан',
-                            newBalance: newBalance.stars_balance // добавляем новый баланс
+                            newBalance: newBalance.stars_balance 
                         });
                         
-                        // Также отправляем событие обновления инвентаря
                         socket.emit('inventory_updated', {
                             userId: fromUserId,
                             timestamp: new Date().toISOString()
                         });
                         
-                        // ОТПРАВЛЯЕМ СОБЫТИЕ ОБНОВЛЕНИЯ БАЛАНСА
                         socket.emit('balance_updated', {
                             userId: fromUserId,
                             newBalance: newBalance.stars_balance,
@@ -254,7 +224,6 @@ export class SocketModule {
                         });
                         
                     } catch (error) {
-                        // ОТКАТ ПРИ ОШИБКЕ
                         await this.db.run('ROLLBACK');
                         throw error;
                     }
@@ -294,7 +263,6 @@ export class SocketModule {
                 try {
                     const { userId, amount } = data;
 
-                    // ЛОГИРУЕМ ТРАНЗАКЦИЮ (статус pending)
                     const transactionId = await this.userService.logTransaction(
                         userId, 
                         'deposit', 
@@ -303,14 +271,11 @@ export class SocketModule {
                         `Пополнение баланса через мини-приложение`
                     );
 
-                    // Обновляем баланс в БД
                     const success = await this.userService.updateBalance(userId, amount);
 
                     if (success) {
-                        // Получаем новый баланс
                         const newBalance = await this.userService.getBalance(userId);
 
-                        // ОБНОВЛЯЕМ СТАТУС ТРАНЗАКЦИИ НА completed
                         if (transactionId) {
                             await this.userService.updateTransactionStatus(transactionId, 'completed');
                         }
@@ -323,14 +288,12 @@ export class SocketModule {
                             message: `Баланс пополнен на ${amount} ⭐`
                         });
 
-                        // Также отправляем обновление UI
                         socket.emit('balance_updated', {
                             userId: userId,
                             newBalance: newBalance,
                             timestamp: new Date().toISOString()
                         });
                     } else {
-                        // ЕСЛИ ОШИБКА - ОБНОВЛЯЕМ СТАТУС ТРАНЗАКЦИИ НА failed
                         if (transactionId) {
                             await this.userService.updateTransactionStatus(transactionId, 'failed');
                         }
@@ -355,7 +318,6 @@ export class SocketModule {
                 try {
                     const { userId, amount } = data;
                     
-                    // Создаем инвойс через Telegram Bot API
                     const invoiceUrl = await this.telegramService.createInvoiceLink(
                         userId, 
                         amount,
@@ -379,8 +341,6 @@ export class SocketModule {
 
             socket.on('get_transaction_history', async (data) => {
                 try {
-                
-                    // ПРОВЕРЯЕМ ФОРМАТ ДАННЫХ
                     let userId;
                 
                     if (typeof data === 'object' && data.userId) {
@@ -396,14 +356,10 @@ export class SocketModule {
                         });
                         return;
                     }
-
-                    // Получаем историю транзакций ПОПОЛНЕНИЙ/ВЫВОДОВ
                     const history = await this.userService.getTransactionHistory(userId, 50);
 
-                    // Получаем историю ПЕРЕДАЧ NFT
                     const transfers = await this.getNFTTransfersHistory(userId);
 
-                    // Объединяем все записи и сортируем по дате (новые сверху)
                     const allRecords = [...history, ...transfers].sort((a, b) => 
                         new Date(b.createdAt || b.timestamp) - new Date(a.createdAt || a.timestamp)
                     );
@@ -430,7 +386,6 @@ export class SocketModule {
 
                     const { nftId, sellerId, price } = data;
 
-                    // Проверяем, что пользователь владеет NFT
                     const nftCheck = await this.db.get(
                         'SELECT * FROM m_nfts WHERE id = ? AND owner_id = ?',
                         [nftId, sellerId]
@@ -444,7 +399,6 @@ export class SocketModule {
                         return;
                     }
 
-                    // Проверяем, что цена корректная
                     if (price < 1 || price > 999999) {
                         socket.emit('nft_sale_listed', {
                             success: false,
@@ -453,7 +407,6 @@ export class SocketModule {
                         return;
                     }
 
-                    // Проверяем, не выставлен ли уже NFT на продажу
                     const existingListing = await this.db.get(
                         'SELECT * FROM m_nfts_on_sale WHERE nft_id = ?',
                         [nftId]
@@ -467,12 +420,9 @@ export class SocketModule {
                         return;
                     }
 
-                    // Выставляем NFT на продажу
                     const success = await this.nftService.listNFTForSale(nftId, sellerId, price);
 
                     if (success) {
-                        console.log(`✅ NFT #${nftId} listed for sale at ${price} stars`);
-
                         socket.emit('nft_sale_listed', {
                             success: true,
                             message: 'NFT успешно выставлен на продажу',
@@ -480,7 +430,6 @@ export class SocketModule {
                             price: price
                         });
 
-                        // Отправляем событие обновления маркета всем клиентам
                         this.io.emit('market_updated', {
                             timestamp: new Date().toISOString()
                         });
@@ -503,7 +452,6 @@ export class SocketModule {
             
             socket.on('get_nfts_for_sale', async (data) => {
                 try {
-                    // Базовый запрос с JOIN для атрибутов
                     let query = `
                         SELECT 
                             ms.id as sale_id,
@@ -558,9 +506,7 @@ export class SocketModule {
                 
                     const params = [];
                 
-                    // ФИЛЬТРАЦИЯ ПО КОЛЛЕКЦИИ (множественный выбор)
                     if (data.collection && data.collection.length > 0) {
-                        // ИСПРАВЛЕНИЕ: Используем IN для числовых ID
                         const collectionIds = data.collection.map(id => {
                             const numId = parseInt(id);
                             return isNaN(numId) ? null : numId;
@@ -572,7 +518,6 @@ export class SocketModule {
                         }
                     }
                 
-                    // ФИЛЬТРАЦИЯ ПО РЕДКОСТИ (множественный выбор)
                     if (data.rarity && data.rarity.length > 0) {
                         const rarityConditions = [];
 
@@ -598,7 +543,6 @@ export class SocketModule {
                         }
                     }
                 
-                    // ФИЛЬТРАЦИЯ ПО ЦЕНЕ
                     if (data.priceMin && data.priceMin > 0) {
                         query += ' AND ms.price >= ?';
                         params.push(data.priceMin);
@@ -609,8 +553,7 @@ export class SocketModule {
                         params.push(data.priceMax);
                     }
                 
-                    // СОРТИРОВКА
-                    let orderBy = 'ms.listed_at DESC'; // по умолчанию
+                    let orderBy = 'ms.listed_at DESC';
 
                     if (data.sort) {
                         switch(data.sort) {
@@ -627,7 +570,6 @@ export class SocketModule {
                                 orderBy = 'ms.price DESC';
                                 break;
                             case 'rarity_high':
-                                // Сначала легендарные (total_supply <= 50), затем эпические и т.д.
                                 orderBy = `CASE 
                                     WHEN mnc.total_supply <= 50 THEN 1
                                     WHEN mnc.total_supply <= 200 THEN 2
@@ -636,7 +578,6 @@ export class SocketModule {
                                 END ASC, ms.listed_at DESC`;
                                 break;
                             case 'rarity_low':
-                                // Сначала обычные, затем редкие и т.д.
                                 orderBy = `CASE 
                                     WHEN mnc.total_supply <= 50 THEN 4
                                     WHEN mnc.total_supply <= 200 THEN 3
@@ -645,7 +586,6 @@ export class SocketModule {
                                 END ASC, ms.listed_at DESC`;
                                 break;
                             case 'collection':
-                                // Группировка по коллекциям
                                 orderBy = 'mnc.name ASC, ms.listed_at DESC';
                                 break;
                         }
@@ -656,7 +596,6 @@ export class SocketModule {
                 
                     const listings = await this.db.all(query, params);
                 
-                    // Функция определения редкости по total_supply
                     const getRarityBySupply = (totalSupply) => {
                         if (!totalSupply) return 'Обычный';
                         if (totalSupply <= 50) return 'Легендарный';
@@ -668,7 +607,6 @@ export class SocketModule {
                     const formattedListings = listings.map(listing => {
                         const rarity = getRarityBySupply(listing.total_supply);
                     
-                        // Формируем данные атрибутов
                         const modelData = listing.model_id ? {
                             id: listing.model_id,
                             name: listing.model_name,
@@ -710,11 +648,9 @@ export class SocketModule {
                             collectionPrice: listing.collection_price || 0,
                             forSale: true,
                             update: listing.update,
-                            // Добавляем данные атрибутов
                             modelData: modelData,
                             backgroundData: backgroundData,
                             patternData: patternData,
-                            // Вычисляемые поля для фронтенда
                             rarityPercentage: listing.number && listing.total_supply ? 
                                 Math.round((listing.number / listing.total_supply) * 10000) / 100 : 0
                         };
@@ -807,13 +743,11 @@ export class SocketModule {
                                 'UPDATE users SET stars_balance = stars_balance + ? WHERE id = ?',
                                 [referrerBonus, buyer.referrer_id]
                             );
-
-                            console.log(`💰 Referral bonus ${referrerBonus} stars to ${buyer.referrer_id} from user ${userId} purchase`);
                         }
                     
                         // 9. Обновляем владельца NFT
                         await this.db.run(
-                            'UPDATE m_nfts SET owner_id = ? WHERE id = ?',
+                            'UPDATE m_nfts SET owner_id = ?, pinned = NULL WHERE id = ?',
                             [userId, nftId]
                         );
                     
@@ -1299,8 +1233,6 @@ export class SocketModule {
                                 'UPDATE users SET stars_balance = stars_balance + ? WHERE id = ?',
                                 [referrerBonus, buyer.referrer_id]
                             );
-                            
-                            console.log(`💰 Referral bonus ${referrerBonus} stars to ${buyer.referrer_id} from user ${userId} purchase`);
                         }
                         
                         // 8. Увеличиваем счетчик проданных
@@ -1476,8 +1408,6 @@ export class SocketModule {
 
                         await this.db.run('COMMIT');
 
-                        console.log(`✅ NFT #${nftId} успешно улучшен`);
-
                         // 10. Получаем обновленный баланс
                         const newBalance = await this.db.get(
                             'SELECT stars_balance FROM users WHERE id = ?',
@@ -1534,6 +1464,238 @@ export class SocketModule {
                 }
             });
 
+            socket.on('toggle_pin_nft', async (data) => {
+                try {
+                    const { nftId, userId } = data;
+                    
+                    console.log(`📌 Toggling pin for NFT #${nftId} for user ${userId}`);
+                    
+                    const result = await this.nftService.togglePinNFT(nftId, userId);
+                    
+                    socket.emit('pin_toggled', result);
+                    
+                    if (result.success) {
+                        console.log(`✅ NFT pin toggled: ${result.action}`);
+                        
+                        // Обновляем инвентарь пользователя
+                        socket.emit('inventory_updated', {
+                            userId: userId,
+                            timestamp: new Date().toISOString()
+                        });
+                    }
+                    
+                } catch (error) {
+                    console.error('❌ Error toggling pin:', error);
+                    socket.emit('pin_toggled', {
+                        success: false,
+                        error: error.message
+                    });
+                }
+            });
+            
+            socket.on('get_user_nfts_with_filters', async (data) => {
+                try {
+                    const { userId, filters = {} } = data;
+
+                    let query = `
+                        SELECT 
+                            mn.id,
+                            mn.number,
+                            mn.collection_id,
+                            mn.created_at,
+                            mn.model,      
+                            mn.background, 
+                            mn.pattern,    
+                            mn.[update],   
+                            mn.pinned,
+                
+                            -- Данные коллекции
+                            mnc.name as collection_name,
+                            mnc.image_file_id as collection_image,
+                            mnc.total_supply as total_supply,
+                            mnc.sold_count as sold_count,
+                            mnc.price as collection_price,
+                            mnc.updateble as updateble,
+                
+                            -- Данные продажи
+                            mnos.id as sale_id,
+                            mnos.price as sale_price,
+                
+                            -- Данные модели (если есть)
+                            m.id as model_id,
+                            m.name as model_name,
+                            m.rarity as model_rarity,
+                            m.file_name as model_file_name,
+                
+                            -- Данные фона (если есть)
+                            b.id as background_id,
+                            b.back_0,
+                            b.back_100,
+                            b.name as background_name,
+                            b.rarity as background_rarity,
+                
+                            -- Данные узора (если есть)
+                            p.id as pattern_id,
+                            p.name as pattern_name,
+                            p.rarity as pattern_rarity,
+                            p.file_name as pattern_file_name
+                
+                        FROM m_nfts mn
+                        LEFT JOIN m_nft_collections mnc ON mn.collection_id = mnc.id
+                        LEFT JOIN m_nfts_on_sale mnos ON mn.id = mnos.nft_id
+                        LEFT JOIN models m ON mn.model = m.id
+                        LEFT JOIN backgrounds b ON mn.background = b.id
+                        LEFT JOIN patterns p ON mn.pattern = p.id
+                        WHERE mn.owner_id = ?
+                    `;
+
+                    const params = [userId];
+
+                    // ФИЛЬТРАЦИЯ ПО КОЛЛЕКЦИИ (множественный выбор)
+                    if (filters.collection && filters.collection.length > 0) {
+                        // Преобразуем 'col1', 'col2' в [1, 2]
+                        const collectionIds = filters.collection
+                            .map(id => parseInt(id.replace('col', '')))
+                            .filter(id => !isNaN(id));
+
+                        if (collectionIds.length > 0) {
+                            query += ' AND mnc.id IN (' + collectionIds.map(() => '?').join(',') + ')';
+                            params.push(...collectionIds);
+                        }
+                    }
+
+                    // БАЗОВАЯ СОРТИРОВКА ПО ЗАКРЕПЛЕНИЮ
+                    let orderBy = `
+                        CASE WHEN mn.pinned IS NOT NULL THEN 0 ELSE 1 END,
+                        mn.pinned ASC,
+                        mn.created_at DESC
+                    `;
+
+                    // ПРИМЕНЯЕМ ФИЛЬТРЫ СОРТИРОВКИ
+                    if (!filters.sort || filters.sort === 'newest') {
+                        // Фильтр "Новые" или фильтр не выбран (по умолчанию) - закрепленные сверху
+                        orderBy = `
+                            CASE WHEN mn.pinned IS NOT NULL THEN 0 ELSE 1 END,
+                            mn.pinned ASC,
+                            mn.created_at DESC
+                        `;
+                    } else {
+                        // Для всех других фильтров - сортировка по выбранному критерию
+                        switch(filters.sort) {
+                            case 'rarity-high':
+                                orderBy = `
+                                    CASE 
+                                        WHEN mnc.total_supply <= 50 THEN 1
+                                        WHEN mnc.total_supply <= 200 THEN 2
+                                        WHEN mnc.total_supply <= 1000 THEN 3
+                                        ELSE 4
+                                    END ASC,
+                                    mn.created_at DESC
+                                `;
+                                break;
+                            case 'rarity-low':
+                                orderBy = `
+                                    CASE 
+                                        WHEN mnc.total_supply <= 50 THEN 4
+                                        WHEN mnc.total_supply <= 200 THEN 3
+                                        WHEN mnc.total_supply <= 1000 THEN 2
+                                        ELSE 1
+                                    END ASC,
+                                    mn.created_at DESC
+                                `;
+                                break;
+                            case 'oldest':
+                                orderBy = 'mn.created_at ASC';
+                                break;
+                            case 'number-low':
+                                orderBy = 'mn.number ASC';
+                                break;
+                            case 'number-high':
+                                orderBy = 'mn.number DESC';
+                                break;
+                            case 'collection':
+                                orderBy = 'mnc.name ASC, mn.number ASC';
+                                break;
+                            default:
+                                // На всякий случай - если что-то пошло не так
+                                orderBy = 'mn.created_at DESC';
+                        }
+                    }
+
+                    query += ` ORDER BY ${orderBy}`;
+
+                    const nfts = await this.db.all(query, params);
+
+                    const formattedNFTs = nfts.map(nft => {
+                        // Формируем данные модели
+                        const modelData = nft.model_id ? {
+                            id: nft.model_id,
+                            name: nft.model_name,
+                            rarity: nft.model_rarity,
+                            file_name: nft.model_file_name
+                        } : null;
+                    
+                        // Формируем данные фона
+                        const backgroundData = nft.background_id ? {
+                            id: nft.background_id,
+                            back_0: nft.back_0,
+                            back_100: nft.back_100,
+                            name: nft.background_name,
+                            rarity: nft.background_rarity
+                        } : null;
+                    
+                        // Формируем данные узора
+                        const patternData = nft.pattern_id ? {
+                            id: nft.pattern_id,
+                            name: nft.pattern_name,
+                            rarity: nft.pattern_rarity,
+                            file_name: nft.pattern_file_name
+                        } : null;
+                    
+                        return {
+                            id: nft.id,
+                            number: nft.number,
+                            collectionId: nft.collection_id,
+                            collectionName: nft.collection_name,
+                            totalSupply: nft.total_supply,
+                            soldCount: nft.sold_count,
+                            fullName: `${nft.collection_name} #${nft.number}`,
+                            image: nft.collection_image ? `/m_nft_image/base/${nft.collection_image}` : '🎴',
+                            name: nft.collection_image,
+                            rarity: this.nftService.getRarity(nft.total_supply),
+                            createdAt: nft.created_at,
+                            rarityPercentage: nft.number && nft.total_supply ? 
+                                Math.round((nft.number / nft.total_supply) * 10000) / 100 : 0,
+                            forSale: !!nft.sale_id,
+                            updateble: nft.updateble || 0,
+                            update: nft.update || null,
+                            model: nft.model,
+                            background: nft.background,
+                            pattern: nft.pattern,
+                            collectionPrice: nft.collection_price || 0,
+                            price: nft.sale_id ? nft.sale_price : (nft.collection_price || 0),
+                            salePrice: nft.sale_price,
+                            pinned: nft.pinned || null,
+                            modelData: modelData,
+                            backgroundData: backgroundData,
+                            patternData: patternData
+                        };
+                    });
+
+                    socket.emit('user_nfts_with_filters', { 
+                        success: true, 
+                        nfts: formattedNFTs,
+                        count: formattedNFTs.length
+                    });
+
+                } catch (error) {
+                    console.error('❌ Error fetching user NFTs with filters:', error);
+                    socket.emit('user_nfts_with_filters', { 
+                        success: false, 
+                        error: error.message 
+                    });
+                }
+            });
 
             socket.on('disconnect', () => {
                 console.log(`🔌 Client disconnected: ${socket.id}`);
@@ -1715,8 +1877,6 @@ export class SocketModule {
                 const userId = data.message.from.id;
                 const chatId = data.message.chat.id;
 
-                console.log(`📱 Received /start command from user ${userId}`);
-
                 // Отправляем приветственное сообщение с инлайн-кнопкой
                 await this.sendWelcomeMessage(chatId);
                 return;
@@ -1776,21 +1936,13 @@ export class SocketModule {
                 const payment = data.message.successful_payment;
                 const userId = data.message.from.id;
 
-                console.log('💰 Successful payment:', payment);
-
                 try {
                     const payload = JSON.parse(payment.invoice_payload);
                     const amount = payload.amount;
                 
-                    console.log(`✅ Parsed payment: user ${userId}, amount ${amount}`);
-                
-                    // НАЧИСЛЯЕМ ЗВЕЗДЫ И СОЗДАЕМ ТРАНЗАКЦИЮ В ОДНОЙ ОПЕРАЦИИ
                     this.userService.depositStars(userId, amount)
                         .then(newBalance => {
                             if (newBalance !== null) {
-                                console.log(`✅ Stars added: user ${userId} +${amount} stars, new balance: ${newBalance}`);
-                            
-                                // Отправляем сообщение
                                 fetch(`${this.telegramService.apiUrl}/sendMessage`, {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
@@ -1800,7 +1952,6 @@ export class SocketModule {
                                     })
                                 }).catch(err => console.error('Error sending message:', err));
                             
-                                // Отправляем событие
                                 if (this.io) {
                                     this.io.emit('payment_successful', {
                                         userId: userId,
@@ -1846,14 +1997,6 @@ export class SocketModule {
                     parse_mode: 'HTML'
                 })
             });
-
-            const data = await response.json();
-
-            if (data.ok) {
-                console.log(`✅ Welcome message sent to chat ${chatId}`);
-            } else {
-                console.error('❌ Failed to send welcome message:', data);
-            }
 
         } catch (error) {
             console.error('❌ Error sending welcome message:', error);

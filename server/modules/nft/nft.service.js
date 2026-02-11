@@ -16,6 +16,7 @@ export class NFTService {
                     mn.background, 
                     mn.pattern,    
                     mn.[update],   
+                    mn.pinned, 
 
                     -- Данные коллекции
                     mnc.name as collection_name,
@@ -55,7 +56,10 @@ export class NFTService {
                 LEFT JOIN backgrounds b ON mn.background = b.id
                 LEFT JOIN patterns p ON mn.pattern = p.id
                 WHERE mn.owner_id = ?
-                ORDER BY mn.created_at DESC
+                ORDER BY 
+                    CASE WHEN mn.pinned IS NOT NULL THEN 0 ELSE 1 END, -- Сначала закрепленные
+                    mn.pinned ASC, -- Порядок закрепления (1, 2, 3...)
+                    mn.created_at DESC 
             `, [userId]);
 
             return nfts.map(nft => {
@@ -115,6 +119,7 @@ export class NFTService {
                     collectionPrice: nft.collection_price || 0,
                     price: nft.sale_id ? nft.sale_price : (nft.collection_price || 0),
                     salePrice: nft.sale_price,
+                    pinned: nft.pinned || null,
                     // Добавляем структурированные данные атрибутов
                     modelData: modelData,
                     backgroundData: backgroundData,
@@ -508,5 +513,69 @@ export class NFTService {
         
         patternHtml += '</div>';
         return patternHtml;
+    }
+
+    async togglePinNFT(nftId, userId) {
+        try {
+            // Проверяем, что пользователь владеет NFT
+            const nftCheck = await this.db.get(
+                'SELECT * FROM m_nfts WHERE id = ? AND owner_id = ?',
+                [nftId, userId]
+            );
+
+            if (!nftCheck) {
+                return {
+                    success: false,
+                    error: 'NFT не найден или вы не владеете им'
+                };
+            }
+
+            // Получаем максимальное значение pinned у пользователя
+            const maxPinned = await this.db.get(`
+                SELECT MAX(pinned) as max_pinned 
+                FROM m_nfts 
+                WHERE owner_id = ?
+            `, [userId]);
+
+            const currentMaxPinned = maxPinned?.max_pinned || 0;
+            
+            // Если NFT уже закреплен
+            if (nftCheck.pinned && nftCheck.pinned > 0) {
+                // Снимаем закрепление
+                await this.db.run(
+                    'UPDATE m_nfts SET pinned = NULL WHERE id = ?',
+                    [nftId]
+                );
+
+                return {
+                    success: true,
+                    action: 'unpin',
+                    message: 'NFT откреплен',
+                    nftId: nftId
+                };
+            } else {
+                // Закрепляем NFT со следующим порядковым номером
+                const newPinValue = currentMaxPinned + 1;
+
+                await this.db.run(
+                    'UPDATE m_nfts SET pinned = ? WHERE id = ?',
+                    [newPinValue, nftId]
+                );
+
+                return {
+                    success: true,
+                    action: 'pin',
+                    message: 'NFT закреплен',
+                    nftId: nftId,
+                    pinOrder: newPinValue
+                };
+            }
+        } catch (error) {
+            console.error('❌ Error toggling NFT pin:', error);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
     }
 }

@@ -49,7 +49,9 @@ function generateUpgradedNFTDisplay(nft, containerSelector, size = 'medium') {
     // 2. Паттерн (ТОЧНО как в истории - 3 круга)
     if (nft.patternData && nft.patternData.file_name) {
         const svgPath = `/m_nft_image/patterns/${nft.patternData.file_name}.svg`;
-        patternHtml = getNFTPatternForModal(svgPath, size);
+        // ПЕРЕДАЕМ ЦВЕТ ФОНА ДЛЯ АДАПТАЦИИ
+        const bgColor = nft.backgroundData?.back_0 || null;
+        patternHtml = getNFTPatternForModal(svgPath, size, bgColor);
     }
     
     // 3. Модель (центрированная как в истории)
@@ -94,8 +96,11 @@ function generateUpgradedNFTDisplay(nft, containerSelector, size = 'medium') {
     container.style.position = 'relative';
 }
 
-function getNFTPatternForModal(svgPath, containerSize = 'medium') {
+function getNFTPatternForModal(svgPath, containerSize = 'medium', bgColor = null) {
     if (!svgPath) return '';
+    
+    // ПОЛУЧАЕМ ФИЛЬТР ДЛЯ АДАПТАЦИИ ЦВЕТА ПОД ФОН - ТОЧНО КАК В МАРКЕТЕ И ПРОФИЛЕ
+    const filterStyle = bgColor ? getPatternFilterStyle(bgColor) : '';
     
     // Размеры в зависимости от контейнера
     const sizes = {
@@ -115,7 +120,7 @@ function getNFTPatternForModal(svgPath, containerSize = 'medium') {
     
     let patternHtml = '<div class="nft-pattern" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; border-radius: 8px; overflow: hidden; z-index: 1;">';
     
-    // 1. Внутренний круг - 6 иконок (первый ряд) - ТОЧНО как в истории
+    // 1. Внутренний круг - 6 иконок
     const innerIconsCount = 6;
     for (let i = 0; i < innerIconsCount; i++) {
         const angle = (i / innerIconsCount) * Math.PI * 2;
@@ -135,12 +140,13 @@ function getNFTPatternForModal(svgPath, containerSize = 'medium') {
                         background-image: url('${svgPath}');
                         background-size: contain;
                         background-repeat: no-repeat;
-                        background-position: center;">
+                        background-position: center;
+                        ${filterStyle}">
             </div>
         `;
     }
     
-    // 2. Средний круг - 4 иконки (второй ряд) - ТОЧНО как в истории
+    // 2. Средний круг - 4 иконки
     const rotationOffset = Math.PI / 6;
     const middleAngles = [
         0,
@@ -167,12 +173,13 @@ function getNFTPatternForModal(svgPath, containerSize = 'medium') {
                         background-image: url('${svgPath}');
                         background-size: contain;
                         background-repeat: no-repeat;
-                        background-position: center;">
+                        background-position: center;
+                        ${filterStyle}">
             </div>
         `;
     }
     
-    // 3. Внешний круг - 8 иконок (третий ряд) - ТОЧНО как в истории
+    // 3. Внешний круг - 8 иконок
     const outerIconsCount = 8;
     for (let i = 0; i < outerIconsCount; i++) {
         const angle = (i / outerIconsCount) * Math.PI * 2;
@@ -192,7 +199,8 @@ function getNFTPatternForModal(svgPath, containerSize = 'medium') {
                         background-image: url('${svgPath}');
                         background-size: contain;
                         background-repeat: no-repeat;
-                        background-position: center;">
+                        background-position: center;
+                        ${filterStyle}">
             </div>
         `;
     }
@@ -368,12 +376,19 @@ function createNFTModal() {
     modal.innerHTML = `
         <div class="filter-modal-content">
             <div class="nft-header">
+                <!-- Кнопка меню в правом верхнем углу -->
+                <button class="nft-menu-button" onclick="toggleNFTMenu(event)" style="position: absolute; top: 15px; right: 15px; z-index: 10;">
+                    ⋮
+                </button>
+                
+                <!-- Выпадающее меню (будет вставлено сюда) -->
+                
                 <div class="nft-preview">
                     <img id="nftModalImage" class="nft-preview-image" src="" alt="NFT">
                 </div>
                 <div id="nftModalName" class="nft-title">NFT #123</div>
                 
-                <!-- Контейнер для кнопок действий (продать/передать/меню) -->
+                <!-- Контейнер для кнопок действий (продать/передать) -->
                 <div class="nft-actions">
                     <!-- Кнопки будут добавлены динамически -->
                 </div>
@@ -418,7 +433,147 @@ function createNFTModal() {
     `;
     
     document.body.appendChild(modal);
+    
+    // Создаем выпадающее меню
+    createNFTDropdownMenu();
+    
     setupNFTModalEvents();
+}
+
+function createNFTDropdownMenu() {
+    const dropdown = document.createElement('div');
+    dropdown.className = 'nft-menu-dropdown';
+    dropdown.innerHTML = `
+        <a class="nft-menu-item-pin" onclick="pinNFT(); closeNFTMenu();">
+            <span class="menu-icon">📌</span>
+            <span class="menu-text">Закрепить</span>
+        </a>
+    `;
+    
+    // ВСТАВЛЯЕМ ПРЯМО ПОСЛЕ КНОПКИ МЕНЮ, а не в конец заголовка
+    const menuButton = document.querySelector('.nft-menu-button');
+    if (menuButton) {
+        menuButton.parentNode.insertBefore(dropdown, menuButton.nextSibling);
+    }
+}
+
+function toggleNFTMenu(event) {
+    event.stopPropagation();
+    
+    const menuButton = event.currentTarget; // Используем currentTarget вместо target
+    const dropdown = menuButton.nextElementSibling;
+    
+    // Проверяем, что это действительно dropdown
+    if (dropdown && dropdown.classList.contains('nft-menu-dropdown')) {
+        const isActive = dropdown.classList.contains('active');
+        
+        // Закрываем все другие меню
+        closeAllNFTMenus();
+        
+        // Открываем/закрываем текущее меню
+        if (!isActive) {
+            dropdown.classList.add('active');
+        }
+        
+        // Закрытие по клику вне меню
+        const closeMenuOnClickOutside = (e) => {
+            if (!dropdown.contains(e.target) && !menuButton.contains(e.target)) {
+                dropdown.classList.remove('active');
+                document.removeEventListener('click', closeMenuOnClickOutside);
+            }
+        };
+        
+        setTimeout(() => {
+            document.addEventListener('click', closeMenuOnClickOutside);
+        }, 10);
+    }
+    
+    if (window.vibrate) window.vibrate(1);
+}
+
+function closeAllNFTMenus() {
+    // Закрываем все меню
+    document.querySelectorAll('.nft-menu-dropdown').forEach(menu => {
+        menu.classList.remove('active');
+    });
+    
+    // Закрываем старые меню (если есть)
+    document.querySelectorAll('.nft-menu').forEach(m => {
+        m.classList.remove('active');
+    });
+}
+
+function pinNFT() {
+    if (!currentNFT) return;
+    
+    console.log('📌 Запрос закрепления NFT:', currentNFT);
+    
+    const tg = window.Telegram?.WebApp;
+    const user = tg?.initDataUnsafe?.user;
+    
+    if (!user?.id) {
+        console.error('❌ User ID not found');
+        return;
+    }
+    
+    // Закрываем меню
+    closeAllNFTMenus();
+    
+    // Показываем индикатор загрузки
+    const menuButton = document.querySelector('.nft-menu-button');
+    if (menuButton) {
+        menuButton.disabled = true;
+        menuButton.innerHTML = '<div class="mini-spinner"></div>';
+    }
+    
+    // Отправляем запрос на сервер
+    if (window.socket && window.socket.connected) {
+        window.socket.emit('toggle_pin_nft', {
+            nftId: currentNFT.id,
+            userId: user.id
+        });
+        
+        // Обработка ответа
+        window.socket.once('pin_toggled', (data) => {
+            // Восстанавливаем кнопку меню
+            if (menuButton) {
+                menuButton.disabled = false;
+                menuButton.textContent = '⋮';
+            }
+            
+            if (data.success) {
+                const actionText = data.action === 'pin' ? 'закреплен' : 'откреплен';
+                
+                // Обновляем currentNFT если нужно
+                if (currentNFT) {
+                    currentNFT.pinned = data.action === 'pin' ? data.pinOrder : null;
+                }
+                
+                // Обновляем отображение в инвентаре если нужно
+                if (window.loadInventoryItems) {
+                    window.loadInventoryItems();
+                }
+                
+            }
+        });
+        
+        // Таймаут на случай отсутствия ответа
+        setTimeout(() => {
+            window.socket.off('pin_toggled');
+            if (menuButton && menuButton.disabled) {
+                menuButton.disabled = false;
+                menuButton.textContent = '⋮';
+            }
+        }, 5000);
+        
+    } else {
+        if (menuButton) {
+            menuButton.disabled = false;
+            menuButton.textContent = '⋮';
+        }
+    }
+    closeNFTModal();
+    if (window.vibrate) window.vibrate([3, 5, 3]);
 }
 
 function setupNFTModalEvents() {
@@ -438,7 +593,10 @@ function setupNFTModalEvents() {
 
 function openNFTModal() {
     const modal = document.getElementById('nftModal');
-    if (modal) modal.classList.add('active');
+    if (modal) {
+        modal.classList.add('active');
+        updateNFTMenuContent();
+    }
     if (window.vibrate) window.vibrate(1);
 }
 
@@ -456,11 +614,6 @@ function resetNFTModal() {
             <button class="nft-action-btn" onclick="transferNFT()">
                 <span class="action-icon"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 16 16"><!-- Icon from Gitlab SVGs by GitLab B.V. - https://gitlab.com/gitlab-org/gitlab-svgs/-/blob/main/LICENSE --><path fill="currentColor" fill-rule="evenodd" d="M11.78 5.841a.75.75 0 0 1-1.06 0l-1.97-1.97v7.379a.75.75 0 0 1-1.5 0V3.871l-1.97 1.97a.75.75 0 0 1-1.06-1.06l3.25-3.25L8 1l.53.53l3.25 3.25a.75.75 0 0 1 0 1.061M2.5 9.75a.75.75 0 0 0-1.5 0V13a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9.75a.75.75 0 0 0-1.5 0V13a.5.5 0 0 1-.5.5H3a.5.5 0 0 1-.5-.5z" clip-rule="evenodd"/></svg></span>
                 <span>Передать</span>
-            </button>
-            <!-- Кнопка меню (три точки) -->
-            <button class="nft-action-btn menu-btn" onclick="openNFTMenu()">
-                <span class="action-icon">⋯</span>
-                <span>Ещё</span>
             </button>
         `;
     }
@@ -487,6 +640,9 @@ function closeNFTModal() {
         if (pattern) pattern.remove();
     }
     
+    // Закрываем меню если открыто
+    closeAllNFTMenus();
+    
     currentNFT = null;
     resetNFTModal();
     if (window.vibrate) window.vibrate(1);
@@ -498,6 +654,11 @@ function updateNFTModal(nft) {
     // Обновляем заголовок и изображение
     document.getElementById('nftModalName').textContent = nft.fullName || `NFT #${nft.number}`;
     updateNFTModalImage(nft);
+    
+    // Обновляем меню перед открытием
+    setTimeout(() => {
+        updateNFTMenuContent();
+    }, 50);
     
     const nftInfoTable = document.querySelector('.nft-info-table');
     if (!nftInfoTable) return;
@@ -632,11 +793,17 @@ function updateNFTFooter() {
 function updateNFTButtons(isOwner, price, forSale = false) {
     const actionsContainer = document.querySelector('.nft-actions');
     const modalFooter = document.querySelector('.modal-footer');
+    const menuButton = document.querySelector('.nft-menu-button');
     
-    if (!actionsContainer || !modalFooter) {
-        console.error('❌ Не найден контейнер для кнопок');
+    if (!actionsContainer || !modalFooter || !menuButton) {
+        console.error('❌ Не найден контейнер для кнопок или кнопка меню');
         return;
     }
+    
+    let showMenu = false;
+
+    // ВСЕГДА показываем кнопку меню (три точки)
+    menuButton.style.display = 'flex';
     
     console.log('🔍 Проверка улучшения NFT:', {
         isOwner,
@@ -657,22 +824,24 @@ function updateNFTButtons(isOwner, price, forSale = false) {
     
     if (canUpgrade) {
         console.log('✅ Показываем кнопку Улучшить');
+        showMenu = false; 
         
-        // Прячем стандартные кнопки (продать/передать/меню)
+        // Прячем стандартные кнопки (продать/передать)
         actionsContainer.style.display = 'none';
         
         // Обновляем футер через специальную функцию
         updateNFTFooter();
         return; // Выходим раньше
     } else {
-        console.log('❌ Улучшение недоступно:', {
-            isOwner,
-            updateble: currentNFT?.updateble,
-            update: currentNFT?.update,
-            reason: !isOwner ? 'Не владеет' : 
-                    currentNFT?.updateble != 1 ? 'updateble != 1' : 
-                    currentNFT?.update === 1 ? 'Уже улучшен' : 'Другая причина'
-        });
+        if (isUpgraded && isOwner) {
+            if (forSale) {
+                showMenu = false; // Не показываем меню при продаже
+            } else {
+                showMenu = true; // ПОКАЗЫВАЕМ меню только здесь
+            }
+        } else {
+            showMenu = false; // Не показываем для не-владельцев
+        }
     }
     
     // 2. Стандартная логика для случаев без улучшения
@@ -697,7 +866,7 @@ function updateNFTButtons(isOwner, price, forSale = false) {
                 <button class="filter-modal-apply" onclick="closeNFTModal()">OK</button>
             `;
         } else {
-            console.log('✅ NFT НЕ на продаже - показываем обычные кнопки + меню');
+            console.log('✅ NFT НЕ на продаже - показываем обычные кнопки');
             
             actionsContainer.innerHTML = `
                 <button class="nft-action-btn" onclick="sellNFT(${currentNFT?.id})">
@@ -707,11 +876,6 @@ function updateNFTButtons(isOwner, price, forSale = false) {
                 <button class="nft-action-btn" onclick="transferNFT(${currentNFT?.id})">
                     <span class="action-icon"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 16 16"><!-- Icon from Gitlab SVGs by GitLab B.V. - https://gitlab.com/gitlab-org/gitlab-svgs/-/blob/main/LICENSE --><path fill="currentColor" fill-rule="evenodd" d="M11.78 5.841a.75.75 0 0 1-1.06 0l-1.97-1.97v7.379a.75.75 0 0 1-1.5 0V3.871l-1.97 1.97a.75.75 0 0 1-1.06-1.06l3.25-3.25L8 1l.53.53l3.25 3.25a.75.75 0 0 1 0 1.061M2.5 9.75a.75.75 0 0 0-1.5 0V13a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9.75a.75.75 0 0 0-1.5 0V13a.5.5 0 0 1-.5.5H3a.5.5 0 0 1-.5-.5z" clip-rule="evenodd"/></svg></span>
                     <span>Передать</span>
-                </button>
-                <!-- Кнопка меню (три точки) -->
-                <button class="nft-action-btn menu-btn" onclick="openNFTMenu()">
-                    <span class="action-icon">⋯</span>
-                    <span>Ещё</span>
                 </button>
             `;
             
@@ -737,6 +901,7 @@ function updateNFTButtons(isOwner, price, forSale = false) {
             `;
         }
     }
+    menuButton.style.display = showMenu ? 'flex' : 'none';
 }
 
 function removeFromSale() {
@@ -1804,26 +1969,25 @@ function updateNFTModalImage(nft) {
     const nftPreview = document.querySelector('.nft-preview');
     if (!nftHeader || !nftPreview) return;
     
-    // 1. Сначала полностью очищаем заголовок
+    // 1. Очищаем
     nftHeader.style.background = '';
     nftHeader.style.position = 'relative';
     nftHeader.style.overflow = 'hidden';
     nftHeader.style.minHeight = '200px';
     
-    // Удаляем предыдущий паттерн если есть
     const oldPattern = nftHeader.querySelector('.nft-header-pattern');
     if (oldPattern) oldPattern.remove();
     
-    // 2. Применяем те же стили что и в маркете
+    // 2. Применяем фон и паттерн
     if (nft.update === 1 && nft.backgroundData && nft.backgroundData.back_0 && nft.backgroundData.back_100) {
-        // ИСПОЛЬЗУЕМ ТУ ЖЕ ФУНКЦИЮ ЧТО В МАРКЕТЕ ДЛЯ ФОНА
         nftHeader.style.cssText = getNFTCardBackground(nft) + 
             'border-radius: 20px 20px 0 0; position: relative; overflow: hidden; min-height: 200px;';
         
-        // ИСПОЛЬЗУЕМ ТУ ЖЕ ФУНКЦИЮ ЧТО В МАРКЕТЕ ДЛЯ ПАТТЕРНА
         if (nft.patternData && nft.patternData.file_name) {
             const svgPath = `/m_nft_image/patterns/${nft.patternData.file_name}.svg`;
-            const patternHtml = getNFTCardFullPatternForHeader(svgPath);
+            // ПЕРЕДАЕМ ЦВЕТ ФОНА ДЛЯ АДАПТАЦИИ
+            const bgColor = nft.backgroundData?.back_0 || null;
+            const patternHtml = getNFTCardFullPatternForHeader(svgPath, bgColor);
             nftHeader.insertAdjacentHTML('beforeend', patternHtml);
         }
     } else {
@@ -1856,10 +2020,11 @@ function updateNFTModalImage(nft) {
     }
 }
 
-function getNFTCardFullPatternForHeader(svgPath) {
+function getNFTCardFullPatternForHeader(svgPath, bgColor = null) {
     if (!svgPath) return '';
     
-    // БЕРЕМ ТОЧНО ТЕ ЖЕ ПАРАМЕТРЫ ЧТО В getNFTCardFullPattern ИЗ МАРКЕТА
+    const filterStyle = bgColor ? getPatternFilterStyle(bgColor) : '';
+    
     const innerCircleRadius = 25;
     const middleCircleRadius = 32;
     const outerCircleRadius = 45;
@@ -1888,7 +2053,8 @@ function getNFTCardFullPatternForHeader(svgPath) {
                         background-image: url('${svgPath}');
                         background-size: contain;
                         background-repeat: no-repeat;
-                        background-position: center;">
+                        background-position: center;
+                        ${filterStyle}">
             </div>
         `;
     }
@@ -1920,7 +2086,8 @@ function getNFTCardFullPatternForHeader(svgPath) {
                         background-image: url('${svgPath}');
                         background-size: contain;
                         background-repeat: no-repeat;
-                        background-position: center;">
+                        background-position: center;
+                        ${filterStyle}">
             </div>
         `;
     }
@@ -1945,7 +2112,8 @@ function getNFTCardFullPatternForHeader(svgPath) {
                         background-image: url('${svgPath}');
                         background-size: contain;
                         background-repeat: no-repeat;
-                        background-position: center;">
+                        background-position: center;
+                        ${filterStyle}">
             </div>
         `;
     }
@@ -1970,7 +2138,8 @@ function getNFTCardFullPatternForHeader(svgPath) {
                         background-image: url('${svgPath}');
                         background-size: contain;
                         background-repeat: no-repeat;
-                        background-position: center;">
+                        background-position: center;
+                        ${filterStyle}">
             </div>
         `;
     }
@@ -1979,147 +2148,44 @@ function getNFTCardFullPatternForHeader(svgPath) {
     return patternHtml;
 }
 
-// Новая функция для создания паттерна в заголовке
-function getNFTBackgroundPatternForModal(svgPath) {
-    if (!svgPath) return '';
-    
-    // Больше иконок для заполнения всего заголовка
-    const innerCircleRadius = 25;
-    const outerCircleRadius = 45;
-    const iconSize = 32;
-    const extraIconsCount = 8;
-    
-    let patternHtml = '<div class="nft-header-pattern" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0.15;">';
-    
-    // Внутренний круг - 6 иконок
-    const innerIconsCount = 6;
-    for (let i = 0; i < innerIconsCount; i++) {
-        const angle = (i / innerIconsCount) * Math.PI * 2;
-        const x = 50 + Math.cos(angle) * innerCircleRadius;
-        const y = 50 + Math.sin(angle) * innerCircleRadius;
-        
-        patternHtml += `
-            <div style="position: absolute;
-                        top: ${y}%;
-                        left: ${x}%;
-                        width: ${iconSize}px;
-                        height: ${iconSize}px;
-                        transform: translate(-50%, -50%);
-                        background-image: url('${svgPath}');
-                        background-size: contain;
-                        background-repeat: no-repeat;
-                        background-position: center;">
-            </div>
-        `;
-    }
-    
-    // Внешний круг - 12 иконок
-    const outerIconsCount = 12;
-    for (let i = 0; i < outerIconsCount; i++) {
-        const angle = (i / outerIconsCount) * Math.PI * 2;
-        const x = 50 + Math.cos(angle) * outerCircleRadius;
-        const y = 50 + Math.sin(angle) * outerCircleRadius;
-        
-        patternHtml += `
-            <div style="position: absolute;
-                        top: ${y}%;
-                        left: ${x}%;
-                        width: ${iconSize}px;
-                        height: ${iconSize}px;
-                        transform: translate(-50%, -50%);
-                        background-image: url('${svgPath}');
-                        background-size: contain;
-                        background-repeat: no-repeat;
-                        background-position: center;">
-            </div>
-        `;
-    }
-    
-    // Дополнительные иконки по всему фону
-    for (let i = 0; i < extraIconsCount; i++) {
-        const x = 20 + Math.random() * 60;
-        const y = 20 + Math.random() * 60;
-        
-        patternHtml += `
-            <div style="position: absolute;
-                        top: ${y}%;
-                        left: ${x}%;
-                        width: ${iconSize - 4}px;
-                        height: ${iconSize - 4}px;
-                        transform: translate(-50%, -50%);
-                        opacity: 0.1;
-                        background-image: url('${svgPath}');
-                        background-size: contain;
-                        background-repeat: no-repeat;
-                        background-position: center;">
-            </div>
-        `;
-    }
-    
-    patternHtml += '</div>';
-    return patternHtml;
-}
-
-// ===== Меню дополнительных действий =====
-function createNFTMenu() {
-    const menu = document.createElement('div');
-    menu.id = 'nftMenuModal';
-    menu.className = 'nft-menu-modal';
-    menu.innerHTML = `
+function createNFTMenuModal() {
+    const modal = document.createElement('div');
+    modal.id = 'nftMenuModal';
+    modal.className = 'nft-menu-modal';
+    modal.innerHTML = `
         <div class="nft-menu-overlay" onclick="closeNFTMenu()"></div>
         <div class="nft-menu-content">
-            <button class="nft-menu-item" onclick="pinNFT()">
-                <span class="nft-menu-icon">📌</span>
-                <span class="nft-menu-text">Закрепить</span>
+            <button class="pin-nft-btn" onclick="pinNFT()">
+                <span class="pin-icon">📌</span>
+                <span class="pin-text">Закрепить</span>
             </button>
         </div>
     `;
-    
-    document.body.appendChild(menu);
+    document.body.appendChild(modal);
 }
 
-function openNFTMenu() {
-    const menu = document.getElementById('nftMenuModal');
-    if (!menu) {
-        createNFTMenu();
-    }
+function updateNFTMenuContent() {
+    const dropdown = document.querySelector('.nft-menu-dropdown');
+    if (!dropdown || !currentNFT) return;
     
-    const menuModal = document.getElementById('nftMenuModal');
-    if (menuModal) {
-        menuModal.classList.add('active');
-    }
+    const isPinned = currentNFT.pinned && currentNFT.pinned > 0;
+    const pinText = isPinned ? 'Открепить' : 'Закрепить';
+    const pinIcon = isPinned ? '📌🔓' : '📌';
     
-    if (window.vibrate) window.vibrate(1);
+    dropdown.innerHTML = `
+        <a class="nft-menu-item-pin" onclick="pinNFT(); closeNFTMenu();">
+            <span class="menu-icon">${pinIcon}</span>
+            <span class="menu-text">${pinText}</span>
+        </a>
+    `;
 }
 
 function closeNFTMenu() {
-    const menu = document.getElementById('nftMenuModal');
-    if (menu) {
-        menu.classList.remove('active');
+    const dropdown = document.querySelector('.nft-menu-dropdown.active');
+    if (dropdown) {
+        dropdown.classList.remove('active');
     }
-    
-    if (window.vibrate) window.vibrate(1);
 }
-
-function pinNFT() {
-    if (!currentNFT) return;
-    
-    console.log('📌 Запрос на закрепление NFT:', currentNFT);
-    
-    // Закрываем меню
-    closeNFTMenu();
-    
-    // Показываем подтверждение
-    if (window.tg?.showPopup) {
-        window.tg.showPopup({
-            title: 'Функция в разработке',
-            message: 'Закрепление NFT появится в следующем обновлении'
-        });
-    }
-    
-    if (window.vibrate) window.vibrate([5, 3, 5]);
-}
-
 
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
@@ -2127,14 +2193,14 @@ if (document.readyState === 'loading') {
         createTransferModal();
         createConfirmationModal();
         createSellModal();
-        createNFTMenu(); 
+        createNFTMenuModal(); 
     });
 } else {
     createNFTModal();
     createTransferModal();
     createConfirmationModal(); 
     createSellModal();
-    createNFTMenu();
+    createNFTMenuModal(); 
 }
 
 window.openNFTModal = openNFTModal;
@@ -2162,6 +2228,7 @@ window.openBalanceModal = openBalanceModal;
 window.closeBalanceModal = closeBalanceModal;
 window.depositFunds = depositFunds;
 window.upgradeNFT = upgradeNFT;
-window.openNFTMenu = openNFTMenu;
-window.closeNFTMenu = closeNFTMenu;
+window.toggleNFTMenu = toggleNFTMenu;
+window.closeAllNFTMenus = closeAllNFTMenus;
 window.pinNFT = pinNFT;
+window.closeNFTMenu = closeNFTMenu;

@@ -475,23 +475,23 @@
     margin-top: 10px;
 }
 
-.on-sale-badge {
+.pinned-badge {
     position: absolute;
-    top: 8px;
-    right: 8px;
-    background: linear-gradient(135deg, gold, #ffd700);
-    color: black;
+    top: 6px;
+    left: 6px;
+    width: 22px;
+    height: 22px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: var(--text-primary);
     border-radius: 50%;
-    width: 24px;
-    height: 24px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 12px;
+    font-size: 11px;
     z-index: 10;
-    box-shadow: 0 2px 8px rgba(255, 215, 0, 0.4);
-    border: 2px solid rgba(255, 255, 255, 0.8);
-    animation: pulse-gold 2s infinite;
+    animation: subtle-pulse 3s infinite;
+    color: #333; /* Темный текст для контраста */
 }
 
 /* Стили для прямоугольных фильтров в профиле (как в главной) */
@@ -631,4 +631,21 @@
 .upgraded-nft-container svg,
 .upgraded-nft-container img[src*=".svg"] {
     transition: opacity 0.3s ease;
+}
+
+.on-sale-badge {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 22px;
+    height: 22px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: var(--text-primary);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    z-index: 10;
 }

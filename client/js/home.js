@@ -50,8 +50,13 @@ function applyHomeFilter(filterType, filterId, filterName) {
         checkbox.checked = true;
     }
     
+    // Обновляем отображение
     updateHomeFilterDisplay();
     
+    // ВАЖНО: НЕМЕДЛЕННО ПРИМЕНЯЕМ ФИЛЬТРЫ
+    loadHomeGifts();
+    
+    // Вибрация
     if (window.vibrate) {
         window.vibrate([5, 3, 5]);
     }
@@ -191,14 +196,12 @@ function updateHomeFilterDisplay() {
     const rarityElement = document.getElementById('selectedRarity');
     const sortElement = document.getElementById('selectedSort');
     
-    // Для категории
+    // Для категории - ВСЕГДА показываем "1 выбрано", "2 выбрано" и т.д.
     if (categoryElement) {
         if (homeConfig.currentCategory.length === 0) {
             categoryElement.textContent = 'Все';
-        } else if (homeConfig.currentCategory.length === 1) {
-            const categoryName = getCategoryNameById(homeConfig.currentCategory[0]);
-            categoryElement.textContent = categoryName;
         } else {
+            // ИСПРАВЛЕНИЕ: Всегда показываем количество, даже если выбран 1 элемент
             categoryElement.textContent = `${homeConfig.currentCategory.length} выбрано`;
         }
         
@@ -208,14 +211,12 @@ function updateHomeFilterDisplay() {
         }
     }
     
-    // Для редкости
+    // Для редкости - ВСЕГДА показываем "1 выбрано", "2 выбрано" и т.д.
     if (rarityElement) {
         if (homeConfig.currentRarity.length === 0) {
             rarityElement.textContent = 'Любая';
-        } else if (homeConfig.currentRarity.length === 1) {
-            const rarityName = getRarityNameById(homeConfig.currentRarity[0]);
-            rarityElement.textContent = rarityName;
         } else {
+            // ИСПРАВЛЕНИЕ: Всегда показываем количество, даже если выбран 1 элемент
             rarityElement.textContent = `${homeConfig.currentRarity.length} выбрано`;
         }
         
@@ -225,11 +226,11 @@ function updateHomeFilterDisplay() {
         }
     }
     
-    // Для сортировки
+    // Для сортировки - оставляем как есть (одиночный выбор, показываем название)
     if (sortElement) {
         const sortNames = {
             'newest': 'Новые',
-            'oldest': 'Старые',
+            'oldest': 'Старые', 
             'price_low': 'Цена ↑',
             'price_high': 'Цена ↓',
             'rarity_high': 'Редкость ↓',
@@ -268,8 +269,6 @@ function getRarityNameById(id) {
 
 // Загрузка подарков для главной страницы
 async function loadHomeGifts() {
-    console.log('🔄 loadHomeGifts вызвана');
-    
     if (homeLoadInProgress) {
         console.log('⏸️ Запрос уже выполняется, пропускаем');
         return;
@@ -282,30 +281,31 @@ async function loadHomeGifts() {
     homeRequestTimeout = setTimeout(async () => {
         homeLoadInProgress = true;
         
-        console.log('🔄 Загрузка доступных NFT для главной страницы...');
-        
         const giftsGrid = document.getElementById('homeGiftsGrid');
         if (!giftsGrid) {
             homeLoadInProgress = false;
             return;
         }
         
-        giftsGrid.innerHTML = `
-            <div class="empty-gifts">
-                <div class="loading-spinner" style="width: 40px; height: 40px; border-width: 3px; margin: 0 auto;"></div>
-                <p style="margin-top: 10px;">Загрузка NFT...</p>
-            </div>
-        `;
-        
         try {
+            // Показываем загрузку
+            giftsGrid.innerHTML = `
+                <div class="empty-gifts">
+                    <div class="loading-spinner"></div>
+                    <p>Загрузка...</p>
+                </div>
+            `;
+            
             // ИСПРАВЛЕНИЕ: Преобразуем ID в числа для сервера
-            const categoryIds = homeConfig.currentCategory.map(id => parseInt(id)).filter(id => !isNaN(id));
+            const categoryIds = homeConfig.currentCategory
+                .map(id => parseInt(id))
+                .filter(id => !isNaN(id));
             
             // Подготавливаем данные для запроса
             const filterData = {
                 category: categoryIds.length > 0 ? categoryIds : undefined,
                 rarity: homeConfig.currentRarity.length > 0 ? homeConfig.currentRarity : undefined,
-                sort: homeConfig.currentSort 
+                sort: homeConfig.currentSort || 'newest'
             };
             
             console.log('🔄 Запрос доступных NFT с фильтрами:', filterData);
@@ -316,6 +316,7 @@ async function loadHomeGifts() {
             if (window.socket && window.socket.connected) {
                 nfts = await new Promise((resolve) => {
                     window.socket.emit('get_available_nfts', filterData);
+                    
                     window.socket.once('available_nfts_list', (data) => {
                         if (data.success) {
                             console.log(`✅ Загружено ${data.nfts.length} NFT для главной`);
@@ -686,24 +687,16 @@ function processGiftClaim(giftId) {
 function openHomeFilterModal(filterType) {
     console.log('🚀 Открываем фильтр главной:', filterType);
     
-    // Сохраняем тип текущего фильтра в глобальной переменной
     window.currentHomeFilterType = filterType;
     
-    // Сохраняем снимок текущих фильтров
     window.homeFiltersSnapshot = {
         currentCategory: [...homeConfig.currentCategory],
         currentRarity: [...homeConfig.currentRarity]
     };
     
-    window.openFilterModal(filterType);
+    window.currentFilterSection = 'home';
     
-    // Загружаем специфичный контент для главной
-    setTimeout(() => {
-        const modalBody = document.getElementById('filterModalBody');
-        if (modalBody) {
-            loadHomeSpecificFilterContent(filterType, modalBody);
-        }
-    }, 10);
+    window.openFilterModal(filterType);
 }
 
 // Загрузка специфичного контента для главной
@@ -1004,3 +997,6 @@ window.clearHomeFilters = clearHomeFilters;
 window.applyHomeFilters = applyHomeFilters;
 window.openHomeFilterModal = openHomeFilterModal;
 window.selectHomeSort = selectHomeSort;
+window.getHomeCategoryContent = getHomeCategoryContent;
+window.getHomeRarityContent = getHomeRarityContent;
+window.getHomeSortContent = getHomeSortContent;
