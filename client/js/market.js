@@ -1,10 +1,21 @@
 let marketNFTs = [];
+
 let marketFilters = {
     collection: [],
     rarity: [],    
     sort: 'newest',
     priceMin: 0,
-    priceMax: 999999
+    priceMax: 999999,
+    model: [],     
+    background: [],
+    pattern: []    
+};
+
+let marketAttributesCache = {
+    models: [],
+    backgrounds: [],
+    patterns: [],
+    lastFetched: null
 };
 
 let marketLoadInProgress = false;
@@ -57,7 +68,10 @@ async function loadMarketItems() {
         const filterData = {
             collection: marketFilters.collection.length > 0 ? marketFilters.collection : undefined,
             rarity: marketFilters.rarity.length > 0 ? marketFilters.rarity : undefined,
-            sort: marketFilters.sort || 'newest', // ВАЖНО: передаем текущую сортировку
+            model: marketFilters.model.length > 0 ? marketFilters.model : undefined,
+            background: marketFilters.background.length > 0 ? marketFilters.background : undefined,
+            pattern: marketFilters.pattern.length > 0 ? marketFilters.pattern : undefined,
+            sort: marketFilters.sort || 'newest',
             priceMin: marketFilters.priceMin || 0,
             priceMax: marketFilters.priceMax || 999999
         };
@@ -525,12 +539,15 @@ function openMarketFilterModal(filterType) {
     marketFiltersSnapshot = {
         collection: [...marketFilters.collection],
         rarity: [...marketFilters.rarity],
+        model: [...marketFilters.model],
+        background: [...marketFilters.background],
+        pattern: [...marketFilters.pattern],
         sort: marketFilters.sort,
         priceMin: marketFilters.priceMin,
         priceMax: marketFilters.priceMax
     };
     
-    // Устанавливаем секцию ДО открытия модалки
+    // Устанавливаем секцию
     window.currentFilterSection = 'market';
     
     // Открываем модалку через общую функцию
@@ -541,14 +558,28 @@ function openMarketFilterModal(filterType) {
 async function loadMarketSpecificFilterContent(filterType, modalBody) {
     let html = '';
     
-    if (filterType === 'collection') {
-        html = await getMarketCollectionsContent(); // Добавьте await
-    } else if (filterType === 'rarity') {
-        html = getMarketRarityContent();
-    } else if (filterType === 'sort') {
-        html = getMarketSortContent();
-    } else if (filterType === 'price') {
-        html = getMarketPriceContent();
+    switch(filterType) {
+        case 'collection':
+            html = await getMarketCollectionsContent();
+            break;
+        case 'rarity':
+            html = getMarketRarityContent();
+            break;
+        case 'model':
+            html = await getMarketModelContent();
+            break;
+        case 'background':
+            html = await getMarketBackgroundContent();
+            break;
+        case 'pattern':
+            html = await getMarketPatternContent();
+            break;
+        case 'sort':
+            html = getMarketSortContent();
+            break;
+        case 'price':
+            html = getMarketPriceContent();
+            break;
     }
     
     if (html) {
@@ -857,6 +888,9 @@ function updateMarketFilterDisplay(filterType, filterName) {
 function updateMarketActiveFilters() {
     updateMarketFilterDisplay('collection', '');
     updateMarketFilterDisplay('rarity', '');
+    updateMarketFilterDisplay('model', '');
+    updateMarketFilterDisplay('background', '');
+    updateMarketFilterDisplay('pattern', '');
     
     const sortName = getMarketFilterDisplayName('sort', marketFilters.sort);
     updateMarketFilterDisplay('sort', sortName);
@@ -889,7 +923,6 @@ function getMarketFilterDisplayName(type, value) {
 
 // Функция для очистки фильтров маркета (внутри модалки)
 function clearMarketFilters() {
-    // Получаем тип фильтра из заголовка модалки
     const modalTitle = document.getElementById('filterModalTitle');
     const title = modalTitle?.textContent;
     
@@ -897,43 +930,45 @@ function clearMarketFilters() {
     if (title === 'Выбор коллекции') filterType = 'collection';
     else if (title === 'Выбор редкости') filterType = 'rarity';
     else if (title === 'Фильтры') filterType = 'sort';
+    else if (title === 'Модели') filterType = 'model';
+    else if (title === 'Фоны') filterType = 'background';
+    else if (title === 'Узоры') filterType = 'pattern';
     
     if (!filterType) return;
     
-    // Очищаем соответствующий фильтр
     if (filterType === 'collection') {
-        marketFilters.collection = []; // ОЧИЩАЕМ МАССИВ
-        document.querySelectorAll('input[id^="collection_"]').forEach(cb => {
-            cb.checked = false;
-        });
+        marketFilters.collection = [];
+        marketFilters.model = []; // Сбрасываем модели при сбросе коллекции
+        document.querySelectorAll('input[id^="collection_"]').forEach(cb => cb.checked = false);
     } 
     else if (filterType === 'rarity') {
-        marketFilters.rarity = []; // ОЧИЩАЕМ МАССИВ
-        document.querySelectorAll('input[id^="rarity_"]').forEach(cb => {
-            cb.checked = false;
-        });
+        marketFilters.rarity = [];
+        document.querySelectorAll('input[id^="rarity_"]').forEach(cb => cb.checked = false);
+    }
+    else if (filterType === 'model') {
+        marketFilters.model = [];
+        document.querySelectorAll('input[id^="model_"]').forEach(cb => cb.checked = false);
+    }
+    else if (filterType === 'background') {
+        marketFilters.background = [];
+        document.querySelectorAll('input[id^="background_"]').forEach(cb => cb.checked = false);
+    }
+    else if (filterType === 'pattern') {
+        marketFilters.pattern = [];
+        document.querySelectorAll('input[id^="pattern_"]').forEach(cb => cb.checked = false);
     }
     else if (filterType === 'sort') {
-        marketFilters.sort = 'newest'; // СБРАСЫВАЕМ НА ЗНАЧЕНИЕ ПО УМОЛЧАНИЮ
-        document.querySelectorAll('input[id^="sort_"]').forEach(cb => {
-            cb.checked = false;
-        });
+        marketFilters.sort = 'newest';
+        document.querySelectorAll('input[id^="sort_"]').forEach(cb => cb.checked = false);
     }
     
-    // Закрываем модалку и сразу применяем сброшенные фильтры
     const modal = document.getElementById('filterModal');
-    if (modal) {
-        modal.classList.remove('active');
-    }
+    if (modal) modal.classList.remove('active');
     
-    // Обновляем UI и применяем фильтры
     updateMarketActiveFilters();
     loadMarketItems();
     
-    // Вибрация
-    if (window.vibrate) {
-        window.vibrate([5, 3, 5]);
-    }
+    if (window.vibrate) window.vibrate([5, 3, 5]);
 }
 
 // Функция для отмены изменений в фильтрах маркета
@@ -988,6 +1023,165 @@ function updateMarketBalance() {
     if (marketBalanceElement && window.appState) {
         marketBalanceElement.textContent = (window.appState.starsBalance || 0).toLocaleString();
     }
+}
+
+// Загрузка данных моделей, фонов и узоров из БД
+async function fetchMarketAttributes() {
+    // Используем кэш (обновляем раз в 5 минут)
+    const now = Date.now();
+    if (marketAttributesCache.lastFetched && 
+        now - marketAttributesCache.lastFetched < 300000) {
+        return marketAttributesCache;
+    }
+    
+    try {
+        if (!window.socket || !window.socket.connected) {
+            return { models: [], backgrounds: [], patterns: [] };
+        }
+        
+        // Запрашиваем все атрибуты через socket
+        const attributes = await new Promise((resolve) => {
+            window.socket.emit('get_market_attributes');
+            
+            window.socket.once('market_attributes_result', (data) => {
+                resolve(data.success ? data : {
+                    models: [],
+                    backgrounds: [],
+                    patterns: []
+                });
+            });
+            
+            setTimeout(() => resolve({
+                models: [],
+                backgrounds: [],
+                patterns: []
+            }), 5000);
+        });
+        
+        // Обновляем кэш
+        marketAttributesCache = {
+            models: attributes.models || [],
+            backgrounds: attributes.backgrounds || [],
+            patterns: attributes.patterns || [],
+            lastFetched: now
+        };
+        
+        return marketAttributesCache;
+        
+    } catch (error) {
+        console.error('❌ Ошибка загрузки атрибутов:', error);
+        return { models: [], backgrounds: [], patterns: [] };
+    }
+}
+
+// Контент моделей для маркета
+async function getMarketModelContent() {
+    const attributes = await fetchMarketAttributes();
+    const models = attributes.models || [];
+    
+    // Проверяем, выбрана ли коллекция
+    const hasSelectedCollection = marketFilters.collection.length > 0;
+    
+    if (!hasSelectedCollection) {
+        return `
+            <div style="padding: 30px; text-align: center; color: var(--text-secondary);">
+                <span style="font-size: 2em; display: block; margin-bottom: 10px;">🎨</span>
+                <p>Сначала выберите коллекцию</p>
+                <p style="font-size: 0.85em; margin-top: 10px;">Фильтр по моделям доступен только при выборе коллекции</p>
+            </div>
+        `;
+    }
+    
+    if (models.length === 0) {
+        return '<p style="color: var(--text-secondary); text-align: center; padding: 20px;">Модели не найдены</p>';
+    }
+    
+    return models.map(model => {
+        const isSelected = marketFilters.model.includes(model.id.toString());
+        
+        return `
+            <div class="filter-item" onclick="selectMarketFilterItem('model', ${model.id}, '${escapeHtml(model.name)}')">
+                <div class="filter-item-content">
+                    <span class="filter-item-name">
+                        <span style="font-size: 1.2em; margin-right: 8px;">🎨</span>
+                        ${escapeHtml(model.name)}
+                        <span style="font-size: 0.8em; margin-left: 6px; padding: 2px 6px; border-radius: 8px;">
+                            Редкость: ${model.rarity}
+                        </span>
+                    </span>
+                </div>
+                <div class="filter-item-checkbox">
+                    <input type="checkbox" id="model_${model.id}" ${isSelected ? 'checked' : ''}>
+                    <label for="model_${model.id}"></label>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+// Контент фонов для маркета
+async function getMarketBackgroundContent() {
+    const attributes = await fetchMarketAttributes();
+    const backgrounds = attributes.backgrounds || [];
+    
+    if (backgrounds.length === 0) {
+        return '<p style="color: var(--text-secondary); text-align: center; padding: 20px;">Фоны не найдены</p>';
+    }
+    
+    return backgrounds.map(bg => {
+        const isSelected = marketFilters.background.includes(bg.id.toString());
+        const gradientStyle = `linear-gradient(135deg, #${bg.back_0} 0%, #${bg.back_100} 100%)`;
+        
+        return `
+            <div class="filter-item" onclick="selectMarketFilterItem('background', ${bg.id}, '${escapeHtml(bg.name)}')">
+                <div class="filter-item-content">
+                    <span class="filter-item-name">
+                        <span style="display: inline-block; width: 30px; height: 30px; border-radius: 6px; margin-right: 10px; background: ${gradientStyle}; border: 1px solid rgba(255,255,255,0.1);"></span>
+                        ${escapeHtml(bg.name)}
+                        <span style="font-size: 0.8em; margin-left: 6px; padding: 2px 6px; border-radius: 8px;">
+                            Редкость: ${bg.rarity}
+                        </span>
+                    </span>
+                </div>
+                <div class="filter-item-checkbox">
+                    <input type="checkbox" id="background_${bg.id}" ${isSelected ? 'checked' : ''}>
+                    <label for="background_${bg.id}"></label>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+// Контент узоров для маркета
+async function getMarketPatternContent() {
+    const attributes = await fetchMarketAttributes();
+    const patterns = attributes.patterns || [];
+    
+    if (patterns.length === 0) {
+        return '<p style="color: var(--text-secondary); text-align: center; padding: 20px;">Узоры не найдены</p>';
+    }
+    
+    return patterns.map(pattern => {
+        const isSelected = marketFilters.pattern.includes(pattern.id.toString());
+        
+        return `
+            <div class="filter-item" onclick="selectMarketFilterItem('pattern', ${pattern.id}, '${escapeHtml(pattern.name)}')">
+                <div class="filter-item-content">
+                    <span class="filter-item-name">
+                        <span style="font-size: 1.2em; margin-right: 8px;">✨</span>
+                        ${escapeHtml(pattern.name)}
+                        <span style="font-size: 0.8em; margin-left: 6px; padding: 2px 6px; border-radius: 8px;">
+                            Редкость: ${pattern.rarity}
+                        </span>
+                    </span>
+                </div>
+                <div class="filter-item-checkbox">
+                    <input type="checkbox" id="pattern_${pattern.id}" ${isSelected ? 'checked' : ''}>
+                    <label for="pattern_${pattern.id}"></label>
+                </div>
+            </div>
+        `;
+    }).join('');
 }
 
 // Экспорт функций
